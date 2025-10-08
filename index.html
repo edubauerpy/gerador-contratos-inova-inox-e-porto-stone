@@ -120,7 +120,7 @@
     </footer>
   </div>
 
-  <!-- Modal de progresso -->
+  <!-- Modal de progresso (centralizado com display:flex) -->
   <div id="progress-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
       <div class="flex items-center gap-3 mb-3">
@@ -136,6 +136,12 @@
       <div class="text-right text-sm mt-2"><span id="progress-num">0</span>%</div>
       <div id="fallback-link" class="hidden mt-4 text-center">
         <a id="manual-link" class="text-inox underline font-medium" href="#" download>Se não baixou, clique aqui para baixar</a>
+      </div>
+      <div id="diag" class="mt-4 hidden">
+        <details class="text-xs text-gray-600">
+          <summary class="cursor-pointer font-medium">Diagnóstico (campos não mapeados)</summary>
+          <div class="mt-2 space-y-1" id="diag-content"></div>
+        </details>
       </div>
     </div>
   </div>
@@ -154,6 +160,7 @@
       PortoStone: ['Contrato', 'Ordem_de_Servico']
     };
 
+    // Campos "padrão" que geralmente existem nos PDFs
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -164,6 +171,7 @@
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' }
     ];
 
+    // Campos adicionais por documento de cada empresa
     const FIELDS_BY_DOC = {
       InovaInox: {
         Contrato: [],
@@ -188,7 +196,7 @@
     const el = s => document.querySelector(s);
     const els = s => Array.from(document.querySelectorAll(s));
 
-    // Navegação
+    // Navegação Empresa -> Config
     els('.company-card').forEach(btn => {
       btn.addEventListener('click', () => {
         currentCompany = btn.dataset.company;
@@ -228,7 +236,7 @@
 
     function fieldInput({ key, label, type='text', placeholder='' }) {
       const id = 'f-'+key;
-      const labelEl = `<label class="text-sm font-medium">${label}</label>`;
+      const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
       if (type === 'textarea') {
         return `<div class="flex flex-col gap-1">${labelEl}
           <textarea id="${id}" data-key="${key}" rows="4" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"></textarea>
@@ -256,7 +264,7 @@
       const data = {};
       els('#fields [data-key]').forEach(inp => {
         const key = inp.dataset.key;
-        let val = inp.value || '';
+        let val = (inp.value || '').toString();
         if (key === 'DATA_EMISSAO_CONTRATO' && !val) {
           val = new Date().toLocaleDateString('pt-BR');
         }
@@ -271,9 +279,17 @@
       return data;
     }
 
-    // ===== UI Progresso =====
+    // ===== UI Progresso (modal centralizado) =====
     function showProgress(show=true) {
-      el('#progress-modal').classList.toggle('hidden', !show);
+      const m = el('#progress-modal');
+      if (show) {
+        m.classList.remove('hidden');
+        // força centralização com flex sempre
+        m.style.display = 'flex';
+      } else {
+        m.classList.add('hidden');
+        m.style.display = 'none';
+      }
     }
     function setProgress(pct, msg='') {
       const bar = el('#progress-bar');
@@ -287,8 +303,8 @@
       const duration = 1200;
       const end = Date.now() + duration;
       (function frame(){
-        confetti({ particleCount: 6, angle: 60, startVelocity: 50, spread: 55, origin: { x: 0 }});
-        confetti({ particleCount: 6, angle: 120, startVelocity: 50, spread: 55, origin: { x: 1 }});
+        confetti({ particleCount: 7, angle: 60, startVelocity: 50, spread: 55, origin: { x: 0 }});
+        confetti({ particleCount: 7, angle: 120, startVelocity: 50, spread: 55, origin: { x: 1 }});
         if (Date.now() < end) requestAnimationFrame(frame);
       })();
     }
@@ -298,14 +314,40 @@
       setTimeout(()=>t.classList.add('hidden'), 1800);
     }
 
+    // ===== Diagnóstico =====
+    function setDiag(hidden, html='') {
+      const box = el('#diag');
+      const content = el('#diag-content');
+      content.innerHTML = html || '';
+      box.classList.toggle('hidden', hidden);
+    }
+
+    function listPdfFieldNames(pdfForm) {
+      // pdf-lib não expõe 100% da API pública para enumerar tudo,
+      // mas conseguimos extrair nomes pelos campos conhecidos (text, checkbox, dropdown)
+      const names = new Set();
+      try {
+        const ctx = pdfForm.acroForm.getFields();
+        ctx.forEach(f => {
+          try {
+            const n = f.getName ? f.getName() : f.getPartialName ? f.getPartialName() : null;
+            if (n) names.add(String(n));
+          } catch(_) {}
+        });
+      } catch(_) { /* fallback silencioso */ }
+      return names;
+    }
+
     // ===== PDF =====
     async function generateOnePDF(company, docName, data) {
-      showProgress(true); setProgress(5, 'Baixando template…');
+      showProgress(true); setDiag(true); setProgress(5, 'Baixando template…');
       const url = `templates/${company}/${docName}.pdf`;
 
       let bytes;
       try {
-        bytes = await fetch(url).then(r => { if(!r.ok) throw new Error('Template não encontrado: ' + url); return r.arrayBuffer(); });
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('Template não encontrado: ' + url);
+        bytes = await resp.arrayBuffer();
       } catch (e) {
         setProgress(0, e.message); alert(e.message); showProgress(false); throw e;
       }
@@ -313,22 +355,64 @@
       setProgress(35, 'Carregando PDF…');
       const pdfDoc = await PDFLib.PDFDocument.load(bytes);
 
-      setProgress(60, 'Preenchendo campos…');
+      setProgress(55, 'Preparando formulário…');
       const form = pdfDoc.getForm(); // requer PDF com AcroForm
-      Object.entries(data).forEach(([key, value]) => {
+
+      // ——— Diagnóstico dos nomes de campos no PDF ———
+      const pdfFieldNames = listPdfFieldNames(form);
+      const keysUser = Object.keys(data);
+      const notFound = [];
+      const foundButEmpty = [];
+
+      setProgress(70, 'Preenchendo campos…');
+
+      // Preenchimento chave a chave
+      keysUser.forEach((key) => {
+        const value = data[key];
+        let hit = false;
         try {
           const tf = form.getTextField?.(key);
-          const cb = form.getCheckBox?.(key);
+          if (tf) { tf.setText(String(value ?? '')); hit = true; }
+        } catch(_) {}
+        try {
           const dd = form.getDropdown?.(key);
-          if (tf) tf.setText(String(value ?? ''));
-          else if (dd) dd.select(String(value ?? ''));
-          else if (cb) { String(value).toLowerCase() === 'true' ? cb.check() : cb.uncheck(); }
-        } catch (_) {}
+          if (dd) { dd.select(String(value ?? '')); hit = true; }
+        } catch(_) {}
+        try {
+          const cb = form.getCheckBox?.(key);
+          if (cb) {
+            const v = String(value ?? '').toLowerCase().trim();
+            (v === 'true' || v === '1' || v === 'on' || v === 'x') ? cb.check() : cb.uncheck();
+            hit = true;
+          }
+        } catch(_) {}
+
+        if (!hit) notFound.push(key);
       });
 
-      try { form.flatten(); } catch (_) {}
+      // Atualiza aparências dos campos para garantir render
+      try { form.updateFieldAppearances?.(); } catch(_) {}
 
-      setProgress(80, 'Gerando arquivo…');
+      // Quais campos do PDF ficaram sem valor?
+      if (pdfFieldNames && pdfFieldNames.size) {
+        pdfFieldNames.forEach(n => {
+          if (!(n in data)) foundButEmpty.push(n);
+        });
+      }
+
+      // Mostra diagnóstico se houver algo para ajustar
+      if (notFound.length || foundButEmpty.length) {
+        const html = `
+          ${notFound.length ? `<div><b>Chaves não encontradas no PDF</b>: ${notFound.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
+          ${foundButEmpty.length ? `<div class="mt-1"><b>Campos do PDF sem valor</b>: ${foundButEmpty.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
+          <div class="mt-1 text-gray-500">Dica: use "Campos personalizados" para bater o nome exato do campo ou ajuste o template.</div>
+        `;
+        setDiag(false, html);
+      }
+
+      setProgress(84, 'Gerando arquivo…');
+      try { form.flatten(); } catch(_) {}
+
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
 
@@ -359,10 +443,13 @@
 
     // ===== Ação principal =====
     el('#btn-generate').addEventListener('click', async () => {
+      if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
+
       const data = collectData();
       const chosen = DOCS[currentCompany].filter(name => el('#doc-'+name)?.checked);
       if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
 
+      // Gera um por um (o modal e diagnóstico reaproveitam)
       for (const docName of chosen) {
         try { await generateOnePDF(currentCompany, docName, data); }
         catch (e) { console.error(e); }
