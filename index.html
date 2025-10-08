@@ -32,46 +32,48 @@
       <div class="text-sm text-gray-500">Mantém templates com {{CHAVE}}</div>
     </header>
 
-    <!-- Empresa (ATUALIZADO: building-2 + drill para Inova Inox; building-2 + hammer para Porto Stone) -->
-    <section class="grid md:grid-cols-2 gap-4">
-      <button data-company="InovaInox" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2 text-gray-700">
-            <!-- building-2 -->
-            <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
-              <path fill="currentColor" d="M4 21V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3h2a2 2 0 0 1 2 2v10h-3v-3H7v3H4Zm3-5h8V6H6v10h1Zm2-8h2v2H9V8Zm4 0h2v2h-2V8ZM9 12h2v2H9v-2Zm4 0h2v2h-2v-2Z"/>
-            </svg>
-            <!-- drill -->
-            <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
-              <path fill="currentColor" d="M3 20h2v-2h11a1 1 0 0 0 1-1v-2h2a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a1 1 0 0 0-1-1H5V2H3v18Zm2-14h10v10H5V6Zm14 7V9h1a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-1Z"/>
-            </svg>
-          </div>
-          <div>
-            <div class="font-semibold text-lg">Inova Inox</div>
-            <div class="text-gray-500 text-sm">Contrato, OS e Capa (templates inalterados)</div>
-          </div>
-        </div>
-      </button>
+<!-- Empresa (com SVGs) -->
+<section class="grid md:grid-cols-2 gap-4">
+  <!-- Inova Inox -->
+  <button data-company="InovaInox" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 text-gray-700">
+        <!-- building-2 -->
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
+          <path fill="currentColor" d="M4 21V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3h2a2 2 0 0 1 2 2v10h-3v-3H7v3H4Zm3-5h8V6H6v10h1Zm2-8h2v2H9V8Zm4 0h2v2h-2V8ZM9 12h2v2H9v-2Zm4 0h2v2h-2v-2Z"/>
+        </svg>
+        <!-- drill -->
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
+          <path fill="currentColor" d="M3 20h2v-2h11a1 1 0 0 0 1-1v-2h2a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a1 1 0 0 0-1-1H5V2H3v18Zm2-14h10v10H5V6Zm14 7V9h1a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-1Z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-lg">Inova Inox</div>
+        <div class="text-gray-500 text-sm">Contrato, OS e Capa (templates inalterados)</div>
+      </div>
+    </div>
+  </button>
 
-      <button data-company="PortoStone" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2 text-gray-700">
-            <!-- building-2 -->
-            <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
-              <path fill="currentColor" d="M4 21V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3h2a2 2 0 0 1 2 2v10h-3v-3H7v3H4Zm3-5h8V6H6v10h1Zm2-8h2v2H9V8Zm4 0h2v2h-2V8ZM9 12h2v2H9v-2Zm4 0h2v2h-2v-2Z"/>
-            </svg>
-            <!-- hammer -->
-            <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
-              <path fill="currentColor" d="M14 3h5v2h-3.586l2.293 2.293a1 1 0 0 1 0 1.414L16 10.414V13h-2v-3.586l2.293-2.293L13.586 5H12V3h2ZM3.293 14.293a1 1 0 0 1 1.414 0l6.5 6.5a1 1 0 0 1-1.414 1.414l-6.5-6.5a1 1 0 0 1 0-1.414ZM6 11l2 2-1.414 1.414-2-2L6 11Z"/>
-            </svg>
-          </div>
-          <div>
-            <div class="font-semibold text-lg">Porto Stone</div>
-            <div class="text-gray-500 text-sm">Contrato e OS (templates inalterados)</div>
-          </div>
-        </div>
-      </button>
-    </section>
+  <!-- Porto Stone -->
+  <button data-company="PortoStone" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 text-gray-700">
+        <!-- building-2 -->
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
+          <path fill="currentColor" d="M4 21V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3h2a2 2 0 0 1 2 2v10h-3v-3H7v3H4Zm3-5h8V6H6v10h1Zm2-8h2v2H9V8Zm4 0h2v2h-2V8ZM9 12h2v2H9v-2Zm4 0h2v2h-2v-2Z"/>
+        </svg>
+        <!-- hammer -->
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6">
+          <path fill="currentColor" d="M14 3h5v2h-3.586l2.293 2.293a1 1 0 0 1 0 1.414L16 10.414V13h-2v-3.586l2.293-2.293L13.586 5H12V3h2ZM3.293 14.293a1 1 0 0 1 1.414 0l6.5 6.5a1 1 0 0 1-1.414 1.414l-6.5-6.5a1 1 0 0 1 0-1.414ZM6 11l2 2-1.414 1.414-2-2L6 11Z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="font-semibold text-lg">Porto Stone</div>
+        <div class="text-gray-500 text-sm">Contrato e OS (templates inalterados)</div>
+      </div>
+    </div>
+  </button>
+</section>
 
     <!-- Config -->
     <section id="step-config" class="hidden mt-6">
