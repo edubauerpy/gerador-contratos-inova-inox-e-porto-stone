@@ -10,10 +10,9 @@
 
   <!-- PizZip para abrir/zipar DOCX -->
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
-  <!-- (Opcional) utils do PizZip -->
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
 
-  <!-- Confetti (efeito) -->
+  <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
   <!-- Lucide Icons (UMD) -->
@@ -21,8 +20,9 @@
 
   <style>
     .progress-striped {
-      background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%,
-        rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%, transparent);
+      background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%,
+        transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%,
+        rgba(255,255,255,.25) 75%, transparent 75%, transparent);
       background-size: 1rem 1rem;
       animation: progress 1s linear infinite;
     }
@@ -236,7 +236,8 @@
         centavos = (t || 'zero') + (cent === 1 ? ' centavo' : ' centavos');
       }
 
-      return centavos ? (reais + ' e 'centavos) : reais;
+      // 🔧 CORRIGIDO: faltava o '+'
+      return centavos ? (reais + ' e ' + centavos) : reais;
     }
 
     // ===== Config e campos =====
@@ -723,7 +724,6 @@
       try {
         const data = collectDataObject();
 
-        // Diag
         const diag = `
           <div><b>Chaves (texto) → valor:</b></div>
           <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('')}</ul>
@@ -732,7 +732,6 @@
         el('#diag-content').innerHTML = diag;
         el('#diag').classList.remove('hidden');
 
-        // Imagens
         const images = [];
         const files = el('#foto-input').files || [];
         for (const f of files) {
@@ -770,7 +769,6 @@
       if (images && images.length) zip = appendImagesToDocument(zip, images);
 
       setProgress(90, 'Compactando DOCX…');
-      // ✔️ PizZip UMD: generate síncrono
       const out = zip.generate({ type: 'blob' });
 
       setProgress(100, 'Concluído!');
