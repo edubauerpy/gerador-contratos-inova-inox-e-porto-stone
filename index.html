@@ -3,132 +3,94 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos — DOCX (docxtemplater)</title>
+  <title>Gerador de Contratos — DOCX (compat templates {{CHAVE}})</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: { inox: '#0f172a', marble: '#d4af37' },
-          boxShadow: { card: '0 8px 30px rgba(0,0,0,0.06)' },
-          borderRadius: { '2xl': '1.25rem' }
-        }
-      }
-    }
-  </script>
 
-  <!-- Libs DOCX (ordem é importante) -->
+  <!-- PizZip para abrir/zipar DOCX -->
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.42.5/build/docxtemplater.js"></script>
 
-  <!-- Image module – build correto para browser -->
-  <script src="https://cdn.jsdelivr.net/npm/docxtemplater-image-module-free@1.1.1/build/imagemodule.js"></script>
-
-  <!-- Confetti -->
+  <!-- Confetti (efeito) -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
   <style>
     .progress-striped {
-      background-image: linear-gradient(
-        45deg,
-        rgba(255,255,255,.25) 25%,
-        transparent 25%, transparent 50%,
-        rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%,
-        transparent 75%, transparent
-      );
+      background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%,
+        transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%,
+        rgba(255,255,255,.25) 75%, transparent 75%, transparent);
       background-size: 1rem 1rem;
       animation: progress 1s linear infinite;
     }
     @keyframes progress { from{background-position:1rem 0} to{background-position:0 0} }
   </style>
 </head>
-
 <body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
   <div class="max-w-5xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Gerador de Contratos (DOCX)</h1>
-      <div class="text-sm text-gray-500">Inova Inox & Porto Stone</div>
+      <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (DOCX — compat)</h1>
+      <div class="text-sm text-gray-500">Mantém templates com {{CHAVE}}</div>
     </header>
 
-    <!-- PASSO 1: escolher empresa -->
-    <section id="step-company" class="grid md:grid-cols-2 gap-4">
-      <button data-company="InovaInox" class="company-card group rounded-2xl bg-white shadow-card border border-gray-100 p-6 text-left hover:shadow-lg transition">
-        <div class="flex items-center gap-3">
-          <div class="h-11 w-11 rounded-xl bg-inox/90 text-white grid place-items-center text-lg">II</div>
-          <div>
-            <div class="font-semibold text-lg">Inova Inox</div>
-            <div class="text-gray-500 text-sm">Contrato, OS e Capa (DOCX com {{CHAVES}})</div>
-          </div>
-        </div>
+    <!-- Empresa -->
+    <section class="grid md:grid-cols-2 gap-4">
+      <button data-company="InovaInox" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
+        <div class="font-semibold text-lg">Inova Inox</div>
+        <div class="text-gray-500 text-sm">Contrato, OS e Capa (templates inalterados)</div>
       </button>
-
-      <button data-company="PortoStone" class="company-card group rounded-2xl bg-white shadow-card border border-gray-100 p-6 text-left hover:shadow-lg transition">
-        <div class="flex items-center gap-3">
-          <div class="h-11 w-11 rounded-xl bg-marble text-white grid place-items-center text-lg">PS</div>
-          <div>
-            <div class="font-semibold text-lg">Porto Stone</div>
-            <div class="text-gray-500 text-sm">Contrato e OS (DOCX com {{CHAVES}})</div>
-          </div>
-        </div>
+      <button data-company="PortoStone" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
+        <div class="font-semibold text-lg">Porto Stone</div>
+        <div class="text-gray-500 text-sm">Contrato e OS (templates inalterados)</div>
       </button>
     </section>
 
-    <!-- PASSO 2: preencher e gerar -->
+    <!-- Config -->
     <section id="step-config" class="hidden mt-6">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-          <button id="btn-back" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">← Voltar</button>
+          <button id="btn-back" class="text-sm px-3 py-1.5 rounded-lg border">← Voltar</button>
           <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
         </div>
-        <div class="text-xs text-gray-500">Caminho: <code class="bg-gray-100 px-1 rounded">templates/&lt;Empresa&gt;/&lt;Documento&gt;.docx</code></div>
+        <div class="text-xs text-gray-500">templates/&lt;Empresa&gt;/&lt;Documento&gt;.docx</div>
       </div>
 
       <div class="grid md:grid-cols-3 gap-4">
-        <!-- Documentos -->
-        <div class="rounded-2xl bg-white shadow-card border border-gray-100 p-5">
-          <div class="font-medium mb-3">Escolha os documentos</div>
+        <div class="rounded-2xl bg-white shadow border p-5">
+          <div class="font-medium mb-3">Documentos</div>
           <div id="doc-options" class="space-y-2 text-sm"></div>
           <p class="text-xs text-gray-500 mt-3">
-            Os templates devem conter placeholders <b>{{CHAVE}}</b> (ex.: <code>{{NOME_CONTRATANTE}}</code>) para textos.
-            Para <b>imagens</b>, use <b>{%FOTO_ORÇAMENTO}</b> ou <b>{%FOTO_ORCAMENTO}</b> (sintaxe do módulo de imagens).
+            Placeholders de texto: <b>{{CHAVE}}</b>.<br>
+            Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) serão removidos do corpo e as imagens anexadas no final.
           </p>
         </div>
 
-        <!-- Campos -->
-        <div class="rounded-2xl bg-white shadow-card border border-gray-100 p-5 md:col-span-2">
+        <div class="rounded-2xl bg-white shadow border p-5 md:col-span-2">
           <div class="font-medium mb-3">Campos</div>
           <div id="fields" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
 
-          <!-- Imagem do orçamento (opcional) -->
-          <div class="mt-4">
-            <div class="font-medium mb-1">Imagem do orçamento ({%FOTO_ORÇAMENTO} / {%FOTO_ORCAMENTO})</div>
-            <input id="foto-input" type="file" accept="image/*" class="block w-full text-sm border rounded-xl px-3 py-2" />
-            <p class="text-xs text-gray-500 mt-1">Se o template tiver a tag de imagem, selecione um arquivo.</p>
+          <div class="mt-5">
+            <div class="font-medium mb-1">Imagens (opcional)</div>
+            <input id="foto-input" type="file" accept="image/*" multiple class="block w-full text-sm border rounded-xl px-3 py-2" />
+            <p class="text-xs text-gray-500 mt-1">Serão inseridas numa nova página ao final.</p>
           </div>
 
           <div class="mt-5">
             <div class="flex items-center justify-between">
               <div class="font-medium">Campos personalizados</div>
-              <button id="add-custom" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">+ Adicionar</button>
+              <button id="add-custom" class="text-sm px-3 py-1.5 rounded-lg border">+ Adicionar</button>
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
-            <p class="text-xs text-gray-500 mt-1">
-              Use o nome exato da chave (com chaves), ex.: <b>{{PRAZO}}</b>.
-            </p>
           </div>
         </div>
       </div>
 
       <div class="flex items-center justify-end gap-3 mt-6">
-        <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-inox text-white hover:opacity-95">Gerar DOCX</button>
+        <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar DOCX</button>
       </div>
     </section>
 
     <footer class="text-center text-xs text-gray-400 mt-10">
-      Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (texto: {{CHAVES}} • imagem: {%FOTO_ORÇAMENTO} / {%FOTO_ORCAMENTO}).
+      Mantém seus DOCX com {{CHAVE}}. Sem dependência de módulo de imagem.
     </footer>
   </div>
 
@@ -136,29 +98,29 @@
   <div id="progress-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
       <div class="flex items-center gap-3 mb-3">
-        <div class="h-10 w-10 rounded-full bg-inox/90 text-white grid place-items-center font-semibold">%</div>
+        <div class="h-10 w-10 rounded-full bg-black text-white grid place-items-center font-semibold">%</div>
         <div>
           <h3 class="text-lg font-semibold">Gerando documento…</h3>
           <p id="progress-msg" class="text-xs text-gray-500">Preparando…</p>
         </div>
       </div>
       <div class="w-full h-3 rounded-full bg-gray-200 overflow-hidden">
-        <div id="progress-bar" class="h-full w-0 bg-inox progress-striped"></div>
+        <div id="progress-bar" class="h-full w-0 bg-black progress-striped"></div>
       </div>
       <div class="text-right text-sm mt-2"><span id="progress-num">0</span>%</div>
       <div id="fallback-link" class="hidden mt-4 text-center">
-        <a id="manual-link" class="text-inox underline font-medium" href="#" download>Se não baixou, clique aqui para baixar</a>
+        <a id="manual-link" class="text-black underline font-medium" href="#" download>Se não baixou, clique aqui para baixar</a>
       </div>
       <div id="diag" class="mt-4 hidden">
         <details class="text-xs text-gray-600">
-          <summary class="cursor-pointer font-medium">Diagnóstico de chaves</summary>
+          <summary class="cursor-pointer font-medium">Diagnóstico</summary>
           <div class="mt-2 space-y-2" id="diag-content"></div>
         </details>
       </div>
     </div>
   </div>
 
-  <!-- Toast sucesso -->
+  <!-- Toast -->
   <div id="toast" class="fixed left-1/2 -translate-x-1/2 top-6 hidden z-[60]">
     <div class="px-4 py-2 bg-white shadow-lg rounded-xl border flex items-center gap-2">
       <span>✅ Documento gerado!</span>
@@ -171,7 +133,6 @@
       InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'],
       PortoStone: ['Contrato', 'Ordem_de_Servico'],
     };
-
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -181,7 +142,6 @@
       { key: 'VALOR_TOTAL', label: 'Valor total' },
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
     ];
-
     const FIELDS_BY_DOC = {
       InovaInox: {
         Contrato: [],
@@ -201,35 +161,52 @@
       },
     };
 
+    // Heurísticas de chaves que devem sumir do texto (imagens)
+    const IMAGE_KEY_HINT = /(DESENHO|FOTO)/i;
+
     // ===== Helpers UI =====
     const el  = (s) => document.querySelector(s);
     const els = (s) => Array.from(document.querySelectorAll(s));
     const wrapKey = (k) => `{{${k}}}`;
 
+    // ===== Regexes (iguais à sua estratégia em Python) =====
+    const RE_PLACEHOLDER_BLOCK = /\{\{(?:.|\n)*?\}\}/ug; // bloco bruto podendo atravessar tags
+    const RE_XML_TAG = /<[^>]+>/g;                       // remove qualquer tag XML
+    const RE_SPACES = /\s+/g;                            // colapsa espaços
+    const RE_CLEAN_PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/ug;
+
+    function normalize_placeholder_block(block) {
+      const textOnly = block.replace(RE_XML_TAG, "");
+      let inner = textOnly.trim();
+      if (inner.startsWith("{{")) inner = inner.slice(2);
+      if (inner.endsWith("}}")) inner = inner.slice(0, -2);
+      inner = inner.replace(RE_SPACES, "");
+      return "{{" + inner + "}}";
+    }
+    function normalize_xml(xml) {
+      if (!xml.includes("{{") || !xml.includes("}}")) return xml;
+      return xml.replace(RE_PLACEHOLDER_BLOCK, m => normalize_placeholder_block(m));
+    }
+
     // ===== Navegação =====
     let currentCompany = null;
-
     els('.company-card').forEach((btn) => {
       btn.addEventListener('click', () => {
         currentCompany = btn.dataset.company;
         el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
         renderDocOptions();
         renderFields();
-        el('#step-company').classList.add('hidden');
         el('#step-config').classList.remove('hidden');
       });
     });
-    el('#btn-back').addEventListener('click', () => {
-      el('#step-config').classList.add('hidden');
-      el('#step-company').classList.remove('hidden');
-    });
+    el('#btn-back').addEventListener('click', () => location.reload());
 
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
       DOCS[currentCompany].forEach((name) => {
         wrap.insertAdjacentHTML('beforeend', `
           <label class="flex items-center gap-2">
-            <input type="checkbox" class="accent-inox doc-check" id="doc-${name}" checked />
+            <input type="checkbox" class="accent-black doc-check" id="doc-${name}" checked />
             <span>${name.replace(/_/g,' ')}</span>
           </label>`);
       });
@@ -251,11 +228,11 @@
       const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${wrapKey(key)})</span></label>`;
       if (type === 'textarea') {
         return `<div class="flex flex-col gap-1">${labelEl}
-          <textarea id="${id}" data-key="${key}" rows="4" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"></textarea>
+          <textarea id="${id}" data-key="${key}" rows="4" class="mt-1 w-full rounded-xl border px-3 py-2"></textarea>
         </div>`;
       }
       return `<div class="flex flex-col gap-1">${labelEl}
-        <input id="${id}" data-key="${key}" placeholder="${placeholder}" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2" />
+        <input id="${id}" data-key="${key}" placeholder="${placeholder}" class="mt-1 w-full rounded-xl border px-3 py-2" />
       </div>`;
     }
 
@@ -267,54 +244,12 @@
     el('#add-custom').addEventListener('click', () => {
       el('#custom-fields').insertAdjacentHTML('beforeend', `
         <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
-          <input placeholder="Chave (ex.: {{NOME_CONTRATANTE}})" data-type="custom-key" class="col-span-2 rounded-xl border border-gray-300 px-3 py-2" />
-          <input placeholder="Valor" data-type="custom-val" class="md:col-span-3 rounded-xl border border-gray-300 px-3 py-2" />
+          <input placeholder="Chave (ex.: {{NOME_CONTRATANTE}})" data-type="custom-key" class="col-span-2 rounded-xl border px-3 py-2" />
+          <input placeholder="Valor" data-type="custom-val" class="md:col-span-3 rounded-xl border px-3 py-2" />
         </div>`);
     });
 
-    // Converte File -> ArrayBuffer
-    function fileToArrayBuffer(file) {
-      return new Promise((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(fr.result);
-        fr.onerror = reject;
-        fr.readAsArrayBuffer(file);
-      });
-    }
-
-    async function collectData() {
-      const data = {};
-      // Campos padrão
-      els('#fields [data-key]').forEach((inp) => {
-        const key = inp.dataset.key;
-        let val = (inp.value || '').toString();
-        if (key === 'DATA_EMISSAO_CONTRATO' && !val) {
-          val = new Date().toLocaleDateString('pt-BR');
-        }
-        data[wrapKey(key)] = val;
-      });
-      // Campos personalizados
-      const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
-      ks.forEach((kEl, i) => {
-        const rawKey = (kEl.value || '').trim();
-        const val = el('#custom-fields').querySelectorAll('[data-type="custom-val"]')[i].value || '';
-        if (!rawKey) return;
-        const norm = rawKey.startsWith('{{') ? rawKey : wrapKey(rawKey.replace(/[{}]/g,'').trim());
-        data[norm] = val;
-      });
-
-      // Imagem do orçamento (opcional) — aceita tags {%FOTO_ORÇAMENTO} e {%FOTO_ORCAMENTO}
-      const fimg = el('#foto-input').files?.[0];
-      if (fimg) {
-        const ab = await fileToArrayBuffer(fimg);
-        const u8 = new Uint8Array(ab);
-        // Para o motor de imagens, as chaves são SEM chaves e com prefixo %
-        data['FOTO_ORÇAMENTO'] = u8;
-        data['FOTO_ORCAMENTO'] = u8;
-      }
-      return data;
-    }
-
+    // ===== Util =====
     function showProgress(show = true) {
       const m = el('#progress-modal');
       if (show) { m.classList.remove('hidden'); m.style.display = 'flex'; }
@@ -339,41 +274,20 @@
       t.classList.remove('hidden');
       setTimeout(() => t.classList.add('hidden'), 1800);
     }
-
     function setDiag(hidden, html = '') {
-      const box = el('#diag');
-      const content = el('#diag-content');
-      content.innerHTML = html || '';
-      box.classList.toggle('hidden', hidden);
+      el('#diag-content').innerHTML = html || '';
+      el('#diag').classList.toggle('hidden', hidden);
     }
 
-    // ===== Image Module (browser build) =====
-    function makeImageModule() {
-      // Suporte a diferentes formas de export do UMD
-      const IM = window.ImageModule
-        || (window.docxtemplaterImageModule && (window.docxtemplaterImageModule.default || window.docxtemplaterImageModule.ImageModule));
-      if (!IM) {
-        throw new Error('ImageModule não disponível. Verifique a tag <script> do image-module.');
-      }
-      return new IM({
-        fileType: 'docx',
-        getImage(tagValue) {
-          if (tagValue instanceof Uint8Array) return tagValue;
-          if (tagValue instanceof ArrayBuffer) return new Uint8Array(tagValue);
-          if (typeof tagValue === 'string' && tagValue.startsWith('data:')) {
-            const base64 = tagValue.split(',')[1];
-            const bin = atob(base64);
-            const u8 = new Uint8Array(bin.length);
-            for (let i=0;i<bin.length;i++) u8[i] = bin.charCodeAt(i);
-            return u8;
-          }
-          return null;
-        },
-        getSize() { return [600, 350]; } // px
+    async function fileToArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsArrayBuffer(file);
       });
     }
 
-    // ===== Util =====
     async function fetchArrayBuffer(urlBase) {
       const url = urlBase.endsWith('.docx') ? urlBase : `${urlBase}.docx`;
       const resp = await fetch(url);
@@ -381,31 +295,89 @@
       return await resp.arrayBuffer();
     }
 
-    function renderDocx(templateArrayBuffer, data) {
-      const zip = new PizZip(templateArrayBuffer);
+    // Insere uma nova página com imagens no final do document.xml (mínimo necessário)
+    function appendImagesToDocument(zip, imagesU8) {
+      if (!imagesU8.length) return zip;
 
-      // Constrói dados para campos de TEXTO: converte {{CHAVE}} -> CHAVE
-      const plainData = {};
-      Object.entries(data).forEach(([k, v]) => {
-        const m = k.match(/^\{\{\s*(.+?)\s*\}\}$/);
-        const plainKey = m ? m[1] : k;
-        plainData[plainKey] = v;
+      // 1) Adiciona arquivos em /word/media
+      const mediaNames = imagesU8.map((u8, i) => `word/media/compat_img_${Date.now()}_${i}.png`);
+      mediaNames.forEach((name, i) => zip.file(name, imagesU8[i]));
+
+      // 2) Atualiza relationships de document.xml
+      const relsPath = "word/_rels/document.xml.rels";
+      let relsXml = zip.file(relsPath).asText();
+      const relBase = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+      const nextId = (() => {
+        const ids = [...relsXml.matchAll(/Id="rId(\d+)"/g)].map(m => +m[1]);
+        return (ids.length ? Math.max(...ids) : 100) + 1;
+      })();
+      const rIds = mediaNames.map((name, idx) => `rId${nextId + idx}`);
+      const relsToAdd = mediaNames.map((name, idx) =>
+        `<Relationship Id="${rIds[idx]}" Type="${relBase}" Target="../media/${name.split('/').pop()}" />`
+      ).join('');
+      relsXml = relsXml.replace(/<\/Relationships>\s*$/i, `${relsToAdd}</Relationships>`);
+      zip.file(relsPath, relsXml);
+
+      // 3) Insere parágrafos com <w:drawing> por imagem, após um page break
+      const docPath = "word/document.xml";
+      let docXml = zip.file(docPath).asText();
+
+      const pageBreak = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+      const drawings = rIds.map(rid => `
+      <w:p>
+        <w:r>
+          <w:drawing>
+            <wp:inline distT="0" distB="0" distL="0" distR="0"
+                xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+              <wp:extent cx="16000000" cy="9000000"/>
+              <wp:docPr id="1" name="CompatImage"/>
+              <a:graphic>
+                <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                  <pic:pic>
+                    <pic:nvPicPr><pic:cNvPr id="0" name=""/><pic:cNvPicPr/></pic:nvPicPr>
+                    <pic:blipFill>
+                      <a:blip r:embed="${rid}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
+                      <a:stretch><a:fillRect/></a:stretch>
+                    </pic:blipFill>
+                    <pic:spPr>
+                      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                    </pic:spPr>
+                  </pic:pic>
+                </a:graphicData>
+              </a:graphic>
+            </wp:inline>
+          </w:drawing>
+        </w:r>
+      </w:p>`).join('\n');
+
+      // Insere no final antes de </w:document>
+      docXml = docXml.replace(/<\/w:document>\s*$/i, `${pageBreak}\n${drawings}\n</w:document>`);
+      zip.file(docPath, docXml);
+
+      return zip;
+    }
+
+    function replacePlaceholdersInZip(zip, replacements, removeImageKeysRegex) {
+      const files = zip.file(/word\/.*\.xml/);
+      files.forEach(f => {
+        let xml = f.asText();
+        // Normaliza blocos {{...}} atravessando runs/tags
+        xml = normalize_xml(xml);
+
+        // Substitui texto
+        Object.entries(replacements).forEach(([k, v]) => {
+          const pattern = new RegExp(String.raw`\{\{\s*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`, 'g');
+          xml = xml.replace(pattern, v);
+        });
+
+        // Remove chaves de imagem
+        xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
+
+        zip.file(f.name, xml);
       });
-
-      const doc = new window.docxtemplater();
-
-      // Anexa módulo de imagens (se carregado corretamente)
-      const imageModule = makeImageModule();
-      doc.attachModule(imageModule).loadZip(zip);
-
-      doc.setData(plainData);
-      try {
-        doc.render();
-      } catch (e) {
-        console.error(e);
-        throw e;
-      }
-      return doc.getZip().generate({ type: 'blob' });
+      return zip;
     }
 
     function downloadBlob(blob, filename) {
@@ -417,26 +389,54 @@
       setTimeout(() => { URL.revokeObjectURL(url); box.classList.add('hidden'); }, 2000);
     }
 
-    async function generateOneDocx(company, docName, data) {
+    async function collectData() {
+      const data = {};
+      els('#fields [data-key]').forEach((inp) => {
+        const key = inp.dataset.key;
+        let val = (inp.value || '').toString();
+        if (key === 'DATA_EMISSAO_CONTRATO' && !val) {
+          val = new Date().toLocaleDateString('pt-BR');
+        }
+        data[key] = val;
+      });
+      const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
+      ks.forEach((kEl, i) => {
+        const rawKey = (kEl.value || '').trim().replace(/[{}]/g,'');
+        const val = el('#custom-fields').querySelectorAll('[data-type="custom-val"]')[i].value || '';
+        if (rawKey) data[rawKey] = val;
+      });
+
+      // Imagens (opcional)
+      const images = [];
+      const files = el('#foto-input').files || [];
+      for (const f of files) {
+        const ab = await fileToArrayBuffer(f);
+        images.push(new Uint8Array(ab));
+      }
+      return { data, images };
+    }
+
+    async function generateOneDocx(company, docName, data, images) {
       setProgress(5, 'Baixando template…');
       const url = `templates/${company}/${docName}.docx`;
       const ab = await fetchArrayBuffer(url);
 
-      setProgress(40, 'Renderizando DOCX…');
-      let blob;
-      try {
-        blob = renderDocx(ab, data);
-      } catch (e) {
-        const msg = (e && e.properties && e.properties.errors)
-          ? e.properties.errors.map(err => err.properties.explanation).join('\n')
-          : (e.message || String(e));
-        setDiag(false, `<div class="text-red-700"><b>Erro ao renderizar:</b><br><pre class="whitespace-pre-wrap">${msg}</pre></div>`);
-        throw e;
+      setProgress(25, 'Abrindo arquivo…');
+      let zip = new PizZip(ab);
+
+      setProgress(55, 'Substituindo placeholders…');
+      zip = replacePlaceholdersInZip(zip, data, IMAGE_KEY_HINT);
+
+      setProgress(75, 'Anexando imagens (final)…');
+      if (images && images.length) {
+        zip = appendImagesToDocument(zip, images);
       }
 
-      setProgress(85, 'Gerando arquivo…');
-      downloadBlob(blob, `${company}_${docName}.docx`);
+      setProgress(90, 'Compactando DOCX…');
+      const out = zip.generate({ type: 'blob' });
+
       setProgress(100, 'Concluído!');
+      downloadBlob(out, `${company}_${docName}.docx`);
     }
 
     // ===== Fluxo principal =====
@@ -445,21 +445,20 @@
 
       showProgress(true); setDiag(true);
       try {
-        const data = await collectData();
+        const { data, images } = await collectData();
         const chosen = DOCS[currentCompany].filter((name) => el('#doc-' + name)?.checked);
         if (!chosen.length) { alert('Selecione pelo menos um documento.'); showProgress(false); return; }
 
-        // Diagnóstico: mostra as chaves que iremos enviar ao motor
         const diag = `
-          <div><b>Chaves enviadas para renderização:</b></div>
-          <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>${k}</code></li>`).join('')}</ul>
-          <div class="mt-2 text-xs text-gray-500">Obs.: para imagens, certifique-se de que o template usa {%FOTO_ORÇAMENTO} ou {%FOTO_ORCAMENTO}.</div>
+          <div><b>Chaves (texto) → valor:</b></div>
+          <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('')}</ul>
+          <div class="mt-2 text-xs text-gray-500">Placeholders que combinem <code>/(DESENHO|FOTO)/i</code> serão removidos e as imagens anexadas ao final.</div>
         `;
         setDiag(false, diag);
 
         for (let i = 0; i < chosen.length; i++) {
           setProgress(Math.round((i / chosen.length) * 100), `Processando ${chosen[i]}…`);
-          await generateOneDocx(currentCompany, chosen[i], data);
+          await generateOneDocx(currentCompany, chosen[i], data, images);
         }
 
         fireConfetti();
@@ -471,6 +470,13 @@
         setTimeout(() => showProgress(false), 1200);
       }
     });
+
+    // Inicializa a etapa de config quando escolher empresa
+    (function init() {
+      els('.company-card').forEach(b=>b.addEventListener('click', ()=> {
+        el('#step-config').classList.remove('hidden');
+      }));
+    })();
   </script>
 </body>
 </html>
