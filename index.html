@@ -27,23 +27,16 @@
     }
     @keyframes progress { from{background-position:1rem 0} to{background-position:0 0} }
 
-    /* Hover grow suave no container */
-    .card-hover {
-      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
-    }
+    .card-hover { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
     .card-hover:hover {
       transform: translateY(-1px) scale(1.01);
       box-shadow: 0 10px 24px rgba(0,0,0,0.10);
-      border-color: rgb(30 41 59 / 0.20); /* slate-800/20 */
+      border-color: rgb(30 41 59 / 0.20);
     }
-
-    /* Selecionado: grow + sombra inferior (mais marcada embaixo) */
     .selected-card {
       transform: translateY(-2px) scale(1.012);
-      box-shadow:
-        0 22px 44px -14px rgba(0,0,0,0.28), /* sombra inferior principal */
-        0 6px 14px rgba(0,0,0,0.06);        /* leve preenchimento */
-      border-color: rgb(15 23 42 / 0.35);   /* slate-900/35 */
+      box-shadow: 0 22px 44px -14px rgba(0,0,0,0.28), 0 6px 14px rgba(0,0,0,0.06);
+      border-color: rgb(15 23 42 / 0.35);
     }
   </style>
 </head>
@@ -66,7 +59,6 @@
           </div>
           <div>
             <div class="font-semibold text-lg leading-tight">Inova Inox</div>
-            <!-- Subtítulo solicitado -->
             <div class="text-gray-500 text-sm leading-tight">Contrato, OS e Capa</div>
           </div>
         </div>
@@ -82,7 +74,6 @@
           </div>
           <div>
             <div class="font-semibold text-lg leading-tight">Porto Stone</div>
-            <!-- Subtítulo solicitado -->
             <div class="text-gray-500 text-sm leading-tight">Contrato e OS</div>
           </div>
         </div>
@@ -177,6 +168,8 @@
       InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'],
       PortoStone: ['Contrato', 'Ordem_de_Servico'],
     };
+
+    // Campos comuns (aparecem sempre que a empresa for escolhida e houver algum documento marcado)
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -185,19 +178,21 @@
       { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
       { key: 'VALOR_TOTAL', label: 'Valor total' },
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
+
+      // >>> Adições para garantir exibição e funcionamento imediato <<<
+      { key: 'VALOR_PRODUTOS_INSTALACAO', label: 'Valor de produtos + instalação' },
+      { key: 'VALOR_DESCONTO', label: 'Desconto acordado' },
+      { key: 'VALOR_TOTAL_POR_EXTENSO', label: 'Valor total por extenso' },
+      { key: 'NÚMERO_PARCELAS', label: 'Número de parcelas' },
+      { key: 'VALOR_PARCELAS', label: 'Valor das parcelas' },
+      { key: 'VALOR_PARCELAS_POR_EXTENSO', label: 'Valor das parcelas (por extenso)' },
+      { key: 'FORMA_PAGAMENTO_PARCELAS', label: 'Forma de pagamento das parcelas' },
     ];
+
+    // Campos específicos por documento
     const FIELDS_BY_DOC = {
       InovaInox: {
-        // Adicionadas as chaves faltantes específicas do Contrato
-        Contrato: [
-          { key: 'VALOR_PRODUTOS_INSTALACAO', label: 'Valor de produtos + instalação' },
-          { key: 'VALOR_DESCONTO', label: 'Desconto acordado' },
-          { key: 'VALOR_TOTAL_POR_EXTENSO', label: 'Valor total por extenso' },
-          { key: 'NÚMERO_PARCELAS', label: 'Número de parcelas' },
-          { key: 'VALOR_PARCELAS', label: 'Valor das parcelas' },
-          { key: 'VALOR_PARCELAS_POR_EXTENSO', label: 'Valor das parcelas (por extenso)' },
-          { key: 'FORMA_PAGAMENTO_PARCELAS', label: 'Forma de pagamento das parcelas' },
-        ],
+        Contrato: [],
         Ordem_de_Servico: [
           { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
           { key: 'CIDADE', label: 'Cidade' },
@@ -229,7 +224,6 @@
     // ===== Navegação =====
     let currentCompany = null;
 
-    // Visual selecionado do card
     function selectCompanyCard(btn) {
       els('.company-card').forEach(b => b.classList.remove('selected-card'));
       btn.classList.add('selected-card');
@@ -251,7 +245,6 @@
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
       DOCS[currentCompany].forEach((name) => {
-        // Iniciar apenas com "Contrato" marcado
         const isChecked = name === 'Contrato' ? 'checked' : '';
         wrap.insertAdjacentHTML('beforeend', `
           <label class="flex items-center gap-2">
@@ -263,6 +256,7 @@
     }
 
     function getRequiredFields() {
+      // Map evita duplicidade de chaves
       const map = new Map(COMMON_FIELDS.map((f) => [f.key, f]));
       DOCS[currentCompany].forEach((name) => {
         if (el('#doc-' + name)?.checked) {
@@ -274,7 +268,6 @@
 
     function fieldInput({ key, label, type='text', placeholder='' }) {
       const id = 'f-' + key;
-      // Exibir apenas (CHAVE), sem {{ }}
       const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
       if (type === 'textarea') {
         return `<div class="flex flex-col gap-1">${labelEl}
@@ -288,7 +281,8 @@
 
     function renderFields() {
       const wrap = el('#fields'); wrap.innerHTML = '';
-      getRequiredFields().forEach((f) => wrap.insertAdjacentHTML('beforeend', fieldInput(f)));
+      const req = getRequiredFields();
+      req.forEach((f) => wrap.insertAdjacentHTML('beforeend', fieldInput(f)));
     }
 
     el('#add-custom').addEventListener('click', () => {
@@ -372,7 +366,7 @@
         <w:r>
           <w:drawing>
             <wp:inline distT="0" distB="0" distL="0" distR="0"
-                xmlns:wp="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
                 xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
                 xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
               <wp:extent cx="16000000" cy="9000000"/>
