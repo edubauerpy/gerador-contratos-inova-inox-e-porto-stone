@@ -31,7 +31,8 @@
 <body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
   <div class="max-w-5xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (DOCX — compat)</h1>
+      <!-- 1) Título sem “(DOCX — compat)” -->
+      <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos</h1>
       <div class="text-sm text-gray-500">Mantém templates com {{CHAVE}}</div>
     </header>
 
@@ -46,7 +47,7 @@
           </div>
           <div>
             <div class="font-semibold text-lg">Inova Inox</div>
-            <div class="text-gray-500 text-sm">Contrato, OS e Capa (templates inalterados)</div>
+            <!-- 5) Removido texto “(templates inalterados)” -->
           </div>
         </div>
       </button>
@@ -60,7 +61,7 @@
           </div>
           <div>
             <div class="font-semibold text-lg">Porto Stone</div>
-            <div class="text-gray-500 text-sm">Contrato e OS (templates inalterados)</div>
+            <!-- 5) Removido texto “(templates inalterados)” -->
           </div>
         </div>
       </button>
@@ -73,7 +74,7 @@
           <button id="btn-back" class="text-sm px-3 py-1.5 rounded-lg border">← Voltar</button>
           <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
         </div>
-        <div class="text-xs text-gray-500">templates/&lt;Empresa&gt;/&lt;Documento&gt;.docx</div>
+        <!-- 4) Removido texto “templates/<Empresa>/<Documento>.docx” -->
       </div>
 
       <div class="grid md:grid-cols-3 gap-4">
@@ -211,9 +212,11 @@
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
       DOCS[currentCompany].forEach((name) => {
+        // 3) Iniciar apenas com "Contrato" marcado
+        const isChecked = name === 'Contrato' ? 'checked' : '';
         wrap.insertAdjacentHTML('beforeend', `
           <label class="flex items-center gap-2">
-            <input type="checkbox" class="accent-black doc-check" id="doc-${name}" checked />
+            <input type="checkbox" class="accent-black doc-check" id="doc-${name}" ${isChecked} />
             <span>${name.replace(/_/g,' ')}</span>
           </label>`);
       });
@@ -232,7 +235,8 @@
 
     function fieldInput({ key, label, type='text', placeholder='' }) {
       const id = 'f-' + key;
-      const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${wrapKey(key)})</span></label>`;
+      // 2) Exibir apenas (CHAVE), sem {{ }}
+      const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
       if (type === 'textarea') {
         return `<div class="flex flex-col gap-1">${labelEl}
           <textarea id="${id}" data-key="${key}" rows="4" class="mt-1 w-full rounded-xl border px-3 py-2"></textarea>
@@ -358,6 +362,14 @@
       return zip;
     }
 
+    // Normaliza XML quebrado por runs no Word (mantém de antes)
+    function normalize_xml(xml) {
+      return xml
+        .replace(/<w:t[^>]*>\s+/g, '<w:t>')
+        .replace(/\s+<\/w:t>/g, '</w:t>')
+        .replace(/>\s+</g, '><');
+    }
+
     function replacePlaceholdersInZip(zip, replacements, removeImageKeysRegex) {
       const files = zip.file(/word\/.*\.xml/);
       files.forEach(f => {
@@ -367,6 +379,7 @@
           const pattern = new RegExp(String.raw`\{\{\s*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`, 'g');
           xml = xml.replace(pattern, v);
         });
+        // Remove os placeholders de imagem do corpo
         xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
         zip.file(f.name, xml);
       });
