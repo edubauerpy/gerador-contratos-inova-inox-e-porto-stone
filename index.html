@@ -14,8 +14,8 @@
   <!-- Confetti (efeito) -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide Icons (para usar <i data-lucide="...">) -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Lucide Icons (UMD: expõe window.lucide) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <style>
     .progress-striped {
@@ -35,38 +35,36 @@
       <div class="text-sm text-gray-500">Mantém templates com {{CHAVE}}</div>
     </header>
 
-<!-- Empresa (Lucide: building-2 + drill / building-2 + hammer) -->
-<section class="grid md:grid-cols-2 gap-4">
-  <!-- Inova Inox -->
-  <button data-company="InovaInox" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
-    <div class="flex items-center gap-3">
-      <div class="flex items-center gap-2 text-gray-700">
-        <i data-lucide="building-2" class="w-6 h-6"></i>
-        <i data-lucide="drill" class="w-6 h-6"></i>
-      </div>
-      <div>
-        <div class="font-semibold text-lg">Inova Inox</div>
-        <div class="text-gray-500 text-sm">Contrato, OS e Capa (templates inalterados)</div>
-      </div>
-    </div>
-  </button>
+    <!-- Empresa (Lucide: building-2 + drill / building-2 + hammer) -->
+    <section class="grid md:grid-cols-2 gap-4">
+      <!-- Inova Inox -->
+      <button data-company="InovaInox" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 text-gray-700">
+            <i data-lucide="building-2" class="w-6 h-6"></i>
+            <i data-lucide="drill" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="font-semibold text-lg">Inova Inox</div>
+            <div class="text-gray-500 text-sm">Contrato, OS e Capa (templates inalterados)</div>
+          </div>
+        </div>
+      </button>
 
-  <!-- Porto Stone -->
-  <button data-company="PortoStone" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
-    <div class="flex items-center gap-3">
-      <div class="flex items-center gap-2 text-gray-700">
-        <i data-lucide="building-2" class="w-6 h-6"></i>
-        <i data-lucide="hammer" class="w-6 h-6"></i>
-      </div>
-      <div>
-        <div class="font-semibold text-lg">Porto Stone</div>
-        <div class="text-gray-500 text-sm">Contrato e OS (templates inalterados)</div>
-      </div>
-    </div>
-  </button>
-</section>
-
-
+      <!-- Porto Stone -->
+      <button data-company="PortoStone" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 text-gray-700">
+            <i data-lucide="building-2" class="w-6 h-6"></i>
+            <i data-lucide="hammer" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <div class="font-semibold text-lg">Porto Stone</div>
+            <div class="text-gray-500 text-sm">Contrato e OS (templates inalterados)</div>
+          </div>
+        </div>
+      </button>
+    </section>
 
     <!-- Config -->
     <section id="step-config" class="hidden mt-6">
@@ -185,41 +183,20 @@
       },
     };
 
-    // Heurísticas de chaves que devem sumir do texto (imagens)
     const IMAGE_KEY_HINT = /(DESENHO|FOTO)/i;
-
-    // ===== Helpers UI =====
     const el  = (s) => document.querySelector(s);
     const els = (s) => Array.from(document.querySelectorAll(s));
     const wrapKey = (k) => `{{${k}}}`;
 
-    // ===== Regexes (iguais à sua estratégia em Python) =====
-    const RE_PLACEHOLDER_BLOCK = /\{\{(?:.|\n)*?\}\}/ug; // bloco bruto podendo atravessar tags
-    const RE_XML_TAG = /<[^>]+>/g;                       // remove qualquer tag XML
-    const RE_SPACES = /\s+/g;                            // colapsa espaços
-    const RE_CLEAN_PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/ug;
-
-    function normalize_placeholder_block(block) {
-      const textOnly = block.replace(RE_XML_TAG, "");
-      let inner = textOnly.trim();
-      if (inner.startsWith("{{")) inner = inner.slice(2);
-      if (inner.endsWith("}}")) inner = inner.slice(0, -2);
-      inner = inner.replace(RE_SPACES, "");
-      return "{{" + inner + "}}";
-    }
-    function normalize_xml(xml) {
-      if (!xml.includes("{{") || !xml.includes("}}")) return xml;
-      return xml.replace(RE_PLACEHOLDER_BLOCK, m => normalize_placeholder_block(m));
-    }
+    // Inicializa Lucide quando o DOM estiver pronto
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide && lucide.createIcons) {
+        lucide.createIcons();   // substitui <i data-lucide="..."> por <svg>
+      }
+    });
 
     // ===== Navegação =====
     let currentCompany = null;
-
-    // Inicializa Lucide quando o DOM estiver pronto
-    document.addEventListener('DOMContentLoaded', () => {
-      if (window.lucide && lucide.createIcons) lucide.createIcons();
-    });
-
     els('.company-card').forEach((btn) => {
       btn.addEventListener('click', () => {
         currentCompany = btn.dataset.company;
@@ -325,15 +302,11 @@
       return await resp.arrayBuffer();
     }
 
-    // Insere uma nova página com imagens no final do document.xml (mínimo necessário)
     function appendImagesToDocument(zip, imagesU8) {
       if (!imagesU8.length) return zip;
-
-      // 1) Adiciona arquivos em /word/media
       const mediaNames = imagesU8.map((u8, i) => `word/media/compat_img_${Date.now()}_${i}.png`);
       mediaNames.forEach((name, i) => zip.file(name, imagesU8[i]));
 
-      // 2) Atualiza relationships de document.xml
       const relsPath = "word/_rels/document.xml.rels";
       let relsXml = zip.file(relsPath).asText();
       const relBase = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
@@ -341,17 +314,15 @@
         const ids = [...relsXml.matchAll(/Id="rId(\d+)"/g)].map(m => +m[1]);
         return (ids.length ? Math.max(...ids) : 100) + 1;
       })();
-      const rIds = mediaNames.map((name, idx) => `rId${nextId + idx}`);
+      const rIds = mediaNames.map((_, idx) => `rId${nextId + idx}`);
       const relsToAdd = mediaNames.map((name, idx) =>
         `<Relationship Id="${rIds[idx]}" Type="${relBase}" Target="../media/${name.split('/').pop()}" />`
       ).join('');
       relsXml = relsXml.replace(/<\/Relationships>\s*$/i, `${relsToAdd}</Relationships>`);
       zip.file(relsPath, relsXml);
 
-      // 3) Insere parágrafos com <w:drawing> por imagem, após um page break
       const docPath = "word/document.xml";
       let docXml = zip.file(docPath).asText();
-
       const pageBreak = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
       const drawings = rIds.map(rid => `
       <w:p>
@@ -382,10 +353,8 @@
         </w:r>
       </w:p>`).join('\n');
 
-      // Insere no final antes de </w:document>
       docXml = docXml.replace(/<\/w:document>\s*$/i, `${pageBreak}\n${drawings}\n</w:document>`);
       zip.file(docPath, docXml);
-
       return zip;
     }
 
@@ -393,18 +362,12 @@
       const files = zip.file(/word\/.*\.xml/);
       files.forEach(f => {
         let xml = f.asText();
-        // Normaliza blocos {{...}} atravessando runs/tags
         xml = normalize_xml(xml);
-
-        // Substitui texto
         Object.entries(replacements).forEach(([k, v]) => {
           const pattern = new RegExp(String.raw`\{\{\s*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`, 'g');
           xml = xml.replace(pattern, v);
         });
-
-        // Remove chaves de imagem
         xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
-
         zip.file(f.name, xml);
       });
       return zip;
@@ -436,7 +399,6 @@
         if (rawKey) data[rawKey] = val;
       });
 
-      // Imagens (opcional)
       const images = [];
       const files = el('#foto-input').files || [];
       for (const f of files) {
