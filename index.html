@@ -24,8 +24,8 @@
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.42.5/build/docxtemplater.js"></script>
 
-  <!-- Image module - build de browser compatível -->
-  <script src="https://cdn.jsdelivr.net/npm/docxtemplater-image-module-free@1.1.1/build/browser.js"></script>
+  <!-- Image module – build correto para browser -->
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater-image-module-free@1.1.1/build/imagemodule.js"></script>
 
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
@@ -92,7 +92,8 @@
           <div class="font-medium mb-3">Escolha os documentos</div>
           <div id="doc-options" class="space-y-2 text-sm"></div>
           <p class="text-xs text-gray-500 mt-3">
-            Os templates devem conter placeholders <b>{{CHAVE}}</b> (ex.: <code>{{NOME_CONTRATANTE}}</code>) no DOCX.
+            Os templates devem conter placeholders <b>{{CHAVE}}</b> (ex.: <code>{{NOME_CONTRATANTE}}</code>) para textos.
+            Para <b>imagens</b>, use <b>{%FOTO_ORÇAMENTO}</b> ou <b>{%FOTO_ORCAMENTO}</b> (sintaxe do módulo de imagens).
           </p>
         </div>
 
@@ -103,9 +104,9 @@
 
           <!-- Imagem do orçamento (opcional) -->
           <div class="mt-4">
-            <div class="font-medium mb-1">Imagem do orçamento ({{FOTO_ORÇAMENTO}})</div>
+            <div class="font-medium mb-1">Imagem do orçamento ({%FOTO_ORÇAMENTO} / {%FOTO_ORCAMENTO})</div>
             <input id="foto-input" type="file" accept="image/*" class="block w-full text-sm border rounded-xl px-3 py-2" />
-            <p class="text-xs text-gray-500 mt-1">Se o template tiver {{FOTO_ORÇAMENTO}}, selecione uma imagem.</p>
+            <p class="text-xs text-gray-500 mt-1">Se o template tiver a tag de imagem, selecione um arquivo.</p>
           </div>
 
           <div class="mt-5">
@@ -127,7 +128,7 @@
     </section>
 
     <footer class="text-center text-xs text-gray-400 mt-10">
-      Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (DOCX com {{CHAVES}}).
+      Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (texto: {{CHAVES}} • imagem: {%FOTO_ORÇAMENTO} / {%FOTO_ORCAMENTO}).
     </footer>
   </div>
 
@@ -302,12 +303,14 @@
         data[norm] = val;
       });
 
-      // Imagem do orçamento (opcional) — aceita {{FOTO_ORÇAMENTO}} e {{FOTO_ORCAMENTO}}
+      // Imagem do orçamento (opcional) — aceita tags {%FOTO_ORÇAMENTO} e {%FOTO_ORCAMENTO}
       const fimg = el('#foto-input').files?.[0];
       if (fimg) {
         const ab = await fileToArrayBuffer(fimg);
-        data['{{FOTO_ORÇAMENTO}}'] = new Uint8Array(ab);
-        data['{{FOTO_ORCAMENTO}}'] = new Uint8Array(ab);
+        const u8 = new Uint8Array(ab);
+        // Para o motor de imagens, as chaves são SEM chaves e com prefixo %
+        data['FOTO_ORÇAMENTO'] = u8;
+        data['FOTO_ORCAMENTO'] = u8;
       }
       return data;
     }
@@ -346,12 +349,14 @@
 
     // ===== Image Module (browser build) =====
     function makeImageModule() {
-      const { ImageModule } = window.docxtemplaterImageModule || {};
-      if (typeof ImageModule !== 'function') {
+      // Suporte a diferentes formas de export do UMD
+      const IM = window.ImageModule
+        || (window.docxtemplaterImageModule && (window.docxtemplaterImageModule.default || window.docxtemplaterImageModule.ImageModule));
+      if (!IM) {
         throw new Error('ImageModule não disponível. Verifique a tag <script> do image-module.');
-        // Dica: confirme que a URL está acessível e vem depois de docxtemplater.js
       }
-      return new ImageModule({
+      return new IM({
+        fileType: 'docx',
         getImage(tagValue) {
           if (tagValue instanceof Uint8Array) return tagValue;
           if (tagValue instanceof ArrayBuffer) return new Uint8Array(tagValue);
@@ -378,16 +383,20 @@
 
     function renderDocx(templateArrayBuffer, data) {
       const zip = new PizZip(templateArrayBuffer);
-      const imageModule = makeImageModule();
-      const doc = new window.docxtemplater().loadZip(zip).attachModule(imageModule);
 
-      // Mapear {{CHAVE}} -> CHAVE para o docxtemplater
+      // Constrói dados para campos de TEXTO: converte {{CHAVE}} -> CHAVE
       const plainData = {};
       Object.entries(data).forEach(([k, v]) => {
         const m = k.match(/^\{\{\s*(.+?)\s*\}\}$/);
         const plainKey = m ? m[1] : k;
         plainData[plainKey] = v;
       });
+
+      const doc = new window.docxtemplater();
+
+      // Anexa módulo de imagens (se carregado corretamente)
+      const imageModule = makeImageModule();
+      doc.attachModule(imageModule).loadZip(zip);
 
       doc.setData(plainData);
       try {
@@ -444,6 +453,7 @@
         const diag = `
           <div><b>Chaves enviadas para renderização:</b></div>
           <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>${k}</code></li>`).join('')}</ul>
+          <div class="mt-2 text-xs text-gray-500">Obs.: para imagens, certifique-se de que o template usa {%FOTO_ORÇAMENTO} ou {%FOTO_ORCAMENTO}.</div>
         `;
         setDiag(false, diag);
 
