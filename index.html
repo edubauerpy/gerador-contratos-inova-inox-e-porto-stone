@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos — PDF</title>
+  <title>Gerador de Contratos — PDF (Busca literal {{CHAVE}})</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,13 +19,14 @@
     }
   </script>
 
-  <!-- pdf-lib para preencher PDFs (AcroForm) -->
+  <!-- pdf-lib -->
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <!-- pako (inflate/deflate) para lidar com FlateDecode -->
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
   <style>
-    /* barra com listras animadas */
     .progress-striped {
       background-image: linear-gradient(
         45deg,
@@ -37,10 +38,7 @@
       background-size: 1rem 1rem;
       animation: progress 1s linear infinite;
     }
-    @keyframes progress {
-      from { background-position: 1rem 0; }
-      to   { background-position: 0 0; }
-    }
+    @keyframes progress { from{background-position:1rem 0} to{background-position:0 0} }
   </style>
 </head>
 
@@ -48,7 +46,7 @@
   <div class="max-w-5xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
       <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Gerador de Contratos (PDF)</h1>
-      <div class="text-sm text-gray-500">Inova Inox & Porto Stone</div>
+      <div class="text-sm text-gray-500">Busca literal de <code>{{CHAVES}}</code> (sem AcroForm)</div>
     </header>
 
     <!-- PASSO 1: escolher empresa -->
@@ -58,7 +56,7 @@
           <div class="h-11 w-11 rounded-xl bg-inox/90 text-white grid place-items-center text-lg">II</div>
           <div>
             <div class="font-semibold text-lg">Inova Inox</div>
-            <div class="text-gray-500 text-sm">Contrato, OS e Capa (PDF com campos)</div>
+            <div class="text-gray-500 text-sm">Contrato, OS e Capa (PDF com {{CHAVES}})</div>
           </div>
         </div>
       </button>
@@ -68,7 +66,7 @@
           <div class="h-11 w-11 rounded-xl bg-marble text-white grid place-items-center text-lg">PS</div>
           <div>
             <div class="font-semibold text-lg">Porto Stone</div>
-            <div class="text-gray-500 text-sm">Contrato e OS (PDF com campos)</div>
+            <div class="text-gray-500 text-sm">Contrato e OS (PDF com {{CHAVES}})</div>
           </div>
         </div>
       </button>
@@ -90,7 +88,7 @@
           <div class="font-medium mb-3">Escolha os documentos</div>
           <div id="doc-options" class="space-y-2 text-sm"></div>
           <p class="text-xs text-gray-500 mt-3">
-            Os templates precisam ser PDFs com <b>campos de formulário</b> (AcroForm) nomeados com as chaves, ex.: <code>{{NOME_CONTRATANTE}}</code>.
+            Use placeholders literais no PDF, ex.: <code>{{NOME_CONTRATANTE}}</code>, <code>{{VALOR_TOTAL}}</code>.
           </p>
         </div>
 
@@ -106,7 +104,7 @@
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
             <p class="text-xs text-gray-500 mt-1">
-              Use o nome exato do campo no PDF (com chaves), ex.: <b>{{NOME_CONTRATANTE}}</b>.
+              Digite exatamente como no PDF (com chaves), ex.: <b>{{NOME_CONTRATANTE}}</b>.
             </p>
           </div>
         </div>
@@ -118,11 +116,11 @@
     </section>
 
     <footer class="text-center text-xs text-gray-400 mt-10">
-      Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (PDFs com campos).
+      Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (PDFs com placeholders literais).
     </footer>
   </div>
 
-  <!-- Modal de progresso (centralizado com display:flex) -->
+  <!-- Modal de progresso -->
   <div id="progress-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
       <div class="flex items-center gap-3 mb-3">
@@ -141,8 +139,8 @@
       </div>
       <div id="diag" class="mt-4 hidden">
         <details class="text-xs text-gray-600">
-          <summary class="cursor-pointer font-medium">Diagnóstico (campos não mapeados)</summary>
-          <div class="mt-2 space-y-1" id="diag-content"></div>
+          <summary class="cursor-pointer font-medium">Diagnóstico</summary>
+          <div class="mt-2 space-y-2" id="diag-content"></div>
         </details>
       </div>
     </div>
@@ -159,10 +157,10 @@
     // ===== Config =====
     const DOCS = {
       InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'],
-      PortoStone: ['Contrato', 'Ordem_de_Servico']
+      PortoStone: ['Contrato', 'Ordem_de_Servico'],
     };
 
-    // Campos "padrão" (UI usa nomes sem chaves; no PDF usamos {{CHAVE}})
+    // Campos base (UI -> coletamos valores; no PDF procuramos {{CHAVE}})
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -170,43 +168,37 @@
       { key: 'TELEFONE_CONTRATANTE', label: 'Telefone' },
       { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
       { key: 'VALOR_TOTAL', label: 'Valor total' },
-      { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' }
+      { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
     ];
 
-    // Campos adicionais por documento
     const FIELDS_BY_DOC = {
       InovaInox: {
         Contrato: [],
         Ordem_de_Servico: [
           { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
           { key: 'CIDADE', label: 'Cidade' },
-          { key: 'VENDEDOR', label: 'Vendedor' }
+          { key: 'VENDEDOR', label: 'Vendedor' },
         ],
         Capa: [
           { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
-          { key: 'ENDERECO_CONTRATANTE_PROJETO', label: 'Endereço do projeto (obra)' }
-        ]
+          { key: 'ENDERECO_CONTRATANTE_PROJETO', label: 'Endereço do projeto (obra)' },
+        ],
       },
       PortoStone: {
         Contrato: [],
-        Ordem_de_Servico: [ { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' } ]
-      }
+        Ordem_de_Servico: [{ key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }],
+      },
     };
 
-    // ===== Helpers =====
-    const el  = s => document.querySelector(s);
-    const els = s => Array.from(document.querySelectorAll(s));
-    const wrapKey = k => `{{${k}}}`; // força padrão com chaves
-    const norm = s => String(s || '')
-      .replace(/^\s+|\s+$/g, '')
-      .replace(/[{}]/g, '')
-      .replace(/\s+/g, '')
-      .toLowerCase();
+    // ===== Helpers UI =====
+    const el  = (s) => document.querySelector(s);
+    const els = (s) => Array.from(document.querySelectorAll(s));
+    const wrapKey = (k) => `{{${k}}}`;
 
-    // ===== Navegação Empresa -> Config =====
+    // ===== Navegação =====
     let currentCompany = null;
 
-    els('.company-card').forEach(btn => {
+    els('.company-card').forEach((btn) => {
       btn.addEventListener('click', () => {
         currentCompany = btn.dataset.company;
         el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
@@ -223,30 +215,29 @@
 
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
-      DOCS[currentCompany].forEach(name => {
+      DOCS[currentCompany].forEach((name) => {
         wrap.insertAdjacentHTML('beforeend', `
           <label class="flex items-center gap-2">
             <input type="checkbox" class="accent-inox doc-check" id="doc-${name}" checked />
             <span>${name.replace(/_/g,' ')}</span>
           </label>`);
       });
-      els('.doc-check').forEach(c => c.addEventListener('change', renderFields));
+      els('.doc-check').forEach((c) => c.addEventListener('change', renderFields));
     }
 
     function getRequiredFields() {
-      const map = new Map(COMMON_FIELDS.map(f => [f.key, f]));
-      DOCS[currentCompany].forEach(name => {
-        if (el('#doc-'+name)?.checked) {
-          (FIELDS_BY_DOC[currentCompany]?.[name] || []).forEach(f => map.set(f.key, f));
+      const map = new Map(COMMON_FIELDS.map((f) => [f.key, f]));
+      DOCS[currentCompany].forEach((name) => {
+        if (el('#doc-' + name)?.checked) {
+          (FIELDS_BY_DOC[currentCompany]?.[name] || []).forEach((f) => map.set(f.key, f));
         }
       });
       return [...map.values()];
     }
 
     function fieldInput({ key, label, type='text', placeholder='' }) {
-      const id = 'f-'+key;
-      const keyHint = wrapKey(key); // exibir dica com {{CHAVE}}
-      const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${keyHint})</span></label>`;
+      const id = 'f-' + key;
+      const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${wrapKey(key)})</span></label>`;
       if (type === 'textarea') {
         return `<div class="flex flex-col gap-1">${labelEl}
           <textarea id="${id}" data-key="${key}" rows="4" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"></textarea>
@@ -259,7 +250,7 @@
 
     function renderFields() {
       const wrap = el('#fields'); wrap.innerHTML = '';
-      getRequiredFields().forEach(f => wrap.insertAdjacentHTML('beforeend', fieldInput(f)));
+      getRequiredFields().forEach((f) => wrap.insertAdjacentHTML('beforeend', fieldInput(f)));
     }
 
     el('#add-custom').addEventListener('click', () => {
@@ -272,111 +263,173 @@
 
     function collectData() {
       const data = {};
-      // Campos padrão (UI usa sem chaves; no PDF usamos com chaves)
-      els('#fields [data-key]').forEach(inp => {
-        const key = inp.dataset.key; // ex.: NOME_CONTRATANTE
+      els('#fields [data-key]').forEach((inp) => {
+        const key = inp.dataset.key;
         let val = (inp.value || '').toString();
         if (key === 'DATA_EMISSAO_CONTRATO' && !val) {
           val = new Date().toLocaleDateString('pt-BR');
         }
-        // salvamos nas duas formas para compatibilidade, mas priorizamos {{CHAVE}}
-        data[wrapKey(key)] = val;
-        data[key] = val;
+        data[wrapKey(key)] = val; // SOMENTE com chaves
       });
-      // Campos personalizados (usuário pode digitar já com {{ }}, ou sem)
       const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
       ks.forEach((kEl, i) => {
-        const rawKey = (kEl.value || '').trim(); // pode vir {{CHAVE}} ou CHAVE
+        const rawKey = (kEl.value || '').trim();           // pode vir {{CHAVE}} ou CHAVE
         const val = el('#custom-fields').querySelectorAll('[data-type="custom-val"]')[i].value || '';
         if (!rawKey) return;
-        const keyNoBraces = rawKey.replace(/[{}]/g,'').trim();
-        data[wrapKey(keyNoBraces)] = val;
-        data[keyNoBraces] = val;
+        const norm = rawKey.startsWith('{{') ? rawKey : wrapKey(rawKey.replace(/[{}]/g,'').trim());
+        data[norm] = val;
       });
       return data;
     }
 
-    // ===== UI Progresso (modal centralizado) =====
-    function showProgress(show=true) {
+    // ===== UI Progresso =====
+    function showProgress(show = true) {
       const m = el('#progress-modal');
       if (show) { m.classList.remove('hidden'); m.style.display = 'flex'; }
       else { m.classList.add('hidden'); m.style.display = 'none'; }
     }
-    function setProgress(pct, msg='') {
-      const bar = el('#progress-bar');
-      const num = el('#progress-num');
-      const m   = el('#progress-msg');
-      bar.style.width = `${pct}%`;
-      num.textContent = Math.max(0, Math.min(100, Math.round(pct)));
-      if (msg) m.textContent = msg;
+    function setProgress(pct, msg = '') {
+      el('#progress-bar').style.width = `${pct}%`;
+      el('#progress-num').textContent = Math.max(0, Math.min(100, Math.round(pct)));
+      if (msg) el('#progress-msg').textContent = msg;
     }
     function fireConfetti() {
       const duration = 1200;
       const end = Date.now() + duration;
-      (function frame(){
-        confetti({ particleCount: 7, angle: 60, startVelocity: 50, spread: 55, origin: { x: 0 }});
-        confetti({ particleCount: 7, angle: 120, startVelocity: 50, spread: 55, origin: { x: 1 }});
+      (function frame() {
+        confetti({ particleCount: 7, angle: 60, startVelocity: 50, spread: 55, origin: { x: 0 } });
+        confetti({ particleCount: 7, angle: 120, startVelocity: 50, spread: 55, origin: { x: 1 } });
         if (Date.now() < end) requestAnimationFrame(frame);
       })();
     }
     function toastOK() {
       const t = el('#toast');
       t.classList.remove('hidden');
-      setTimeout(()=>t.classList.add('hidden'), 1800);
+      setTimeout(() => t.classList.add('hidden'), 1800);
     }
 
     // ===== Diagnóstico =====
-    function setDiag(hidden, html='') {
+    function setDiag(hidden, html = '') {
       const box = el('#diag');
       const content = el('#diag-content');
       content.innerHTML = html || '';
       box.classList.toggle('hidden', hidden);
     }
 
-    function listPdfFieldsUnsafe(pdfForm) {
-      // Tenta inspecionar os campos do AcroForm (API interna/privada do pdf-lib — usar com cautela)
-      const names = [];
+    // ===== Utils PDF =====
+    const { PDFName, PDFArray } = PDFLib;
+    const te = new TextEncoder();
+    const td = new TextDecoder('latin1'); // streams podem estar em WinAnsi/Latin1
+
+    function escapeRegex(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    function pdfEscape(value) {
+      // Escapar (), \ para não quebrar strings PDF
+      return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n');
+    }
+
+    // Tenta inflar; se falhar, trata como texto não comprimido
+    function tryInflateToString(u8) {
       try {
-        const fields = pdfForm.acroForm.getFields();
-        fields.forEach(f => {
-          try {
-            const n = f.getName ? f.getName() : f.getPartialName ? f.getPartialName() : null;
-            if (n) names.push(String(n));
-          } catch(_) {}
-        });
-      } catch(_) {}
-      return names;
+        const inflated = pako.inflate(u8);
+        return { str: td.decode(inflated), compressed: true };
+      } catch (_) {
+        // não comprimido (ou outro filtro): tenta decodificar direto como latin1
+        try { return { str: td.decode(u8), compressed: false }; }
+        catch (e) { return { str: '', compressed: false, error: e }; }
+      }
     }
 
-    function buildFieldIndex(form) {
-      // Constrói índices por:
-      // 1) nome exato
-      // 2) nome sem chaves normalizado (norm)
-      const byExact = new Map();
-      const byNorm  = new Map();
-
-      // Descobre todos os nomes possíveis tentando obter campos por nome diretamente não é trivial;
-      // usamos a varredura acima (unsafe) para montar o catálogo.
-      const names = listPdfFieldsUnsafe(form);
-      names.forEach(name => {
-        const exact = String(name);
-        const nrm   = norm(exact);
-        byExact.set(exact, exact);
-        if (!byNorm.has(nrm)) byNorm.set(nrm, exact);
-      });
-
-      return { byExact, byNorm, names };
+    function deflateOrEncode(str, wasCompressed) {
+      return wasCompressed ? pako.deflate(te.encode(str)) : te.encode(str);
     }
 
-    function tryGetAnyField(form, fieldName) {
-      // Tenta como text, dropdown e checkbox — sem erro se não existir
-      try { const f = form.getTextField?.(fieldName); if (f) return { type: 'text', f }; } catch(_) {}
-      try { const f = form.getDropdown?.(fieldName); if (f) return { type: 'dropdown', f }; } catch(_) {}
-      try { const f = form.getCheckBox?.(fieldName); if (f) return { type: 'checkbox', f }; } catch(_) {}
-      return null;
+    // Substitui APENAS quando o placeholder aparece DENTRO de strings "(...)" do conteúdo
+    function replacePlaceholdersInContentString(content, replacements) {
+      const counts = {};
+      let updated = content;
+
+      for (const [ph, val] of Object.entries(replacements)) {
+        // Regex: \( \s* {{CHAVE}} \s* \)
+        const re = new RegExp('\\(\\s*' + escapeRegex(ph) + '\\s*\\)', 'g');
+        const before = (updated.match(re) || []).length;
+        if (before > 0) {
+          const escaped = '(' + pdfEscape(val) + ')';
+          updated = updated.replace(re, escaped);
+        }
+        counts[ph] = before;
+      }
+      return { updated, counts };
     }
 
-    // ===== PDF =====
+    // Altera streams de conteúdo da página (array ou único)
+    function getContentsArray(pdfDoc, pageNode) {
+      let contents = pageNode.get(PDFName.of('Contents'));
+      if (!contents) return null;
+      contents = pdfDoc.context.lookup(contents);
+      if (contents instanceof PDFArray) return contents;
+      // Se for stream único, empacota em array sintético para fluxo uniforme
+      const arr = PDFArray.withContext(pdfDoc.context);
+      arr.push(pageNode.get(PDFName.of('Contents')));
+      return arr;
+    }
+
+    async function replacePlaceholdersInPdf(pdfDoc, replacements) {
+      const pages = pdfDoc.getPages();
+      const globalCounts = {}; // soma por placeholder
+      const pagesInfo = [];
+
+      for (let p = 0; p < pages.length; p++) {
+        const page = pages[p];
+        const pageNode = page.node;
+        const contentsArr = getContentsArray(pdfDoc, pageNode);
+        if (!contentsArr) continue;
+
+        let pageTotal = 0;
+        const perStreamInfo = [];
+
+        for (let i = 0; i < contentsArr.size(); i++) {
+          const ref = contentsArr.get(i);
+          const stream = pdfDoc.context.lookup(ref);
+          if (!stream || !stream.getContents) continue;
+
+          const raw = stream.getContents();
+          const { str, compressed } = tryInflateToString(raw);
+          if (str === '') continue;
+
+          const { updated, counts } = replacePlaceholdersInContentString(str, replacements);
+          // Acumula contagens
+          for (const [ph, c] of Object.entries(counts)) {
+            globalCounts[ph] = (globalCounts[ph] || 0) + c;
+            pageTotal += c;
+          }
+
+          if (updated !== str) {
+            const newBytes = deflateOrEncode(updated, compressed);
+            // cria novo stream e substitui a referência no array
+            const newStream = compressed
+              ? pdfDoc.context.flateStream(newBytes)
+              : pdfDoc.context.stream(newBytes);
+            const newRef = pdfDoc.context.register(newStream);
+            contentsArr.set(i, newRef);
+          }
+
+          perStreamInfo.push({ index: i, replaced: Object.values(counts).reduce((a,b)=>a+b,0) });
+        }
+
+        pagesInfo.push({ page: p+1, replaced: pageTotal, perStreamInfo });
+      }
+
+      return { globalCounts, pagesInfo };
+    }
+
+    // ===== Geração =====
     async function generateOnePDF(company, docName, data) {
       showProgress(true); setDiag(true); setProgress(5, 'Baixando template…');
       const url = `templates/${company}/${docName}.pdf`;
@@ -393,106 +446,38 @@
       setProgress(35, 'Carregando PDF…');
       const pdfDoc = await PDFLib.PDFDocument.load(bytes);
 
-      setProgress(55, 'Preparando formulário…');
-      const form = pdfDoc.getForm(); // requer PDF com AcroForm
-
-      // Índices de nomes dos campos
-      const { byExact, byNorm, names: allPdfNames } = buildFieldIndex(form);
-
-      // Diagnóstico
-      const notFound = [];       // chaves da UI/usuário que não acharam campo
-      const foundButEmpty = [];  // campos no PDF sem valor atribuído
-
-      setProgress(70, 'Preenchendo campos…');
-
-      // Preencher: SEMPRE prioriza {{CHAVE}}
-      const filledSet = new Set(); // nomes reais de campos que foram preenchidos
-      const userKeys = Object.keys(data);
-
-      for (const userKey of userKeys) {
-        const val = data[userKey];
-
-        // 1) Se usuário informou sem chaves, derive também {{CHAVE}}
-        const kNoBraces = userKey.replace(/[{}]/g, '').trim();
-        const kWith     = wrapKey(kNoBraces);
-        const candidates = [];
-
-        // Se a chave já veio com chaves, começamos por ela
-        if (/^\s*\{\{.+\}\}\s*$/.test(userKey)) {
-          candidates.push(userKey);
-          candidates.push(kNoBraces); // fallback sem chaves
-        } else {
-          // Se veio sem, primeiro tentamos com chaves
-          candidates.push(kWith);
-          candidates.push(userKey); // fallback sem chaves
-        }
-
-        // 2) Para cada candidato, tentamos:
-        //  - match exato (byExact)
-        //  - match por normalização (byNorm)
-        let hit = false;
-        for (const c of candidates) {
-          const exact = byExact.get(c);
-          const via = exact || byExact.get(String(c)) || null;
-          let targetName = via;
-
-          if (!targetName) {
-            const nrm = norm(c);
-            const viaNorm = byNorm.get(nrm);
-            if (viaNorm) targetName = viaNorm;
-          }
-
-          if (targetName) {
-            const field = tryGetAnyField(form, targetName);
-            if (field) {
-              if (field.type === 'text') {
-                field.f.setText(String(val ?? ''));
-              } else if (field.type === 'dropdown') {
-                try { field.f.select(String(val ?? '')); } catch(_) { /* se opção não existir, ignora */ }
-              } else if (field.type === 'checkbox') {
-                const v = String(val ?? '').toLowerCase().trim();
-                (v === 'true' || v === '1' || v === 'on' || v === 'x') ? field.f.check() : field.f.uncheck();
-              }
-              filledSet.add(targetName);
-              hit = true;
-              break; // não tentar mais candidatos
-            }
-          }
-        }
-
-        if (!hit) {
-          // registra a chave "preferencial" com chaves para facilitar o ajuste do template
-          notFound.push(kWith);
-        }
-      }
-
-      // Atualiza aparências dos campos para garantir render
-      try { form.updateFieldAppearances?.(); } catch(_) {}
-
-      // Campos do PDF que ficaram sem valor
-      allPdfNames.forEach(n => {
-        if (!filledSet.has(n)) foundButEmpty.push(n);
+      // Monta dicionário apenas com chaves no formato {{CHAVE}}
+      const replacements = {};
+      Object.entries(data).forEach(([k, v]) => {
+        const key = k.startsWith('{{') ? k : wrapKey(k.replace(/[{}]/g,'').trim());
+        replacements[key] = v == null ? '' : String(v);
       });
 
+      setProgress(60, 'Substituindo placeholders…');
+      const { globalCounts, pagesInfo } = await replacePlaceholdersInPdf(pdfDoc, replacements);
+
       // Diagnóstico
-      if (notFound.length || foundButEmpty.length) {
-        const html = `
-          ${notFound.length ? `<div><b>Chaves não encontradas no PDF</b>: ${notFound.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
-          ${foundButEmpty.length ? `<div class="mt-1"><b>Campos do PDF sem valor</b>: ${foundButEmpty.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
-          <div class="mt-1 text-gray-500">Padronize os campos do PDF como <code>{{CHAVE}}</code> (ex.: <code>{{NOME_CONTRATANTE}}</code>) ou use “Campos personalizados”.</div>
-        `;
-        setDiag(false, html);
-      }
+      const notFound = Object.entries(replacements)
+        .filter(([k, _]) => (globalCounts[k] || 0) === 0)
+        .map(([k]) => k);
+
+      const diagHtml = `
+        <div><b>Ocorrências substituídas por chave:</b></div>
+        <ul class="list-disc pl-5">
+          ${Object.keys(replacements).map(k => `<li><code>${k}</code>: ${globalCounts[k] || 0}</li>`).join('')}
+        </ul>
+        ${notFound.length ? `<div class="mt-2 text-amber-700"><b>Não encontradas</b>: ${notFound.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
+        <div class="mt-2 text-gray-500">
+          Dica: se alguma chave estiver com 0, o PDF pode ter fragmentado o texto (ex.: <code>{{NOME_</code> + <code>CONTRATANTE}}</code>).
+        </div>
+      `;
+      setDiag(false, diagHtml);
 
       setProgress(84, 'Gerando arquivo…');
-      try { form.flatten(); } catch(_) {}
-
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
 
       setProgress(95, 'Iniciando download…');
-
-      // Download automático + fallback
       const urlBlob = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = urlBlob;
@@ -501,7 +486,6 @@
       a.click();
       a.remove();
 
-      // Fallback visível se algo bloquear
       const manual = el('#manual-link');
       const box = el('#fallback-link');
       manual.href = urlBlob;
@@ -519,7 +503,7 @@
       if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
 
       const data = collectData();
-      const chosen = DOCS[currentCompany].filter(name => el('#doc-'+name)?.checked);
+      const chosen = DOCS[currentCompany].filter((name) => el('#doc-' + name)?.checked);
       if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
 
       for (const docName of chosen) {
