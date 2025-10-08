@@ -19,11 +19,14 @@
     }
   </script>
 
-  <!-- Libs DOCX -->
+  <!-- Libs DOCX (ordem é importante) -->
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.42.5/build/docxtemplater.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docxtemplater-image-module-free@1.2.3/build/index.min.js"></script>
+
+  <!-- Image module - build de browser (expõe window.docxtemplaterImageModule) -->
+  <script src="https://unpkg.com/docxtemplater-image-module-free@1.2.3/browser.js"></script>
+
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
@@ -299,12 +302,12 @@
         data[norm] = val;
       });
 
-      // Imagem do orçamento (opcional) — chave {{FOTO_ORÇAMENTO}} ou {{FOTO_ORCAMENTO}}
+      // Imagem do orçamento (opcional) — aceita {{FOTO_ORÇAMENTO}} e {{FOTO_ORCAMENTO}}
       const fimg = el('#foto-input').files?.[0];
       if (fimg) {
         const ab = await fileToArrayBuffer(fimg);
         data['{{FOTO_ORÇAMENTO}}'] = new Uint8Array(ab);
-        data['{{FOTO_ORCAMENTO}}'] = new Uint8Array(ab); // variante sem acento se precisar
+        data['{{FOTO_ORCAMENTO}}'] = new Uint8Array(ab);
       }
       return data;
     }
@@ -341,12 +344,14 @@
       box.classList.toggle('hidden', hidden);
     }
 
-    // ===== Motor DOCX (docxtemplater) =====
-    // ImageModule: lê bytes de {{FOTO_ORÇAMENTO}} se fornecido
-    function makeImageModule(scopeData) {
-      return new window.ImageModule({
-        getImage: function(tagValue) {
-          // Aceita Uint8Array, ArrayBuffer, dataURL (string)
+    // ===== Image Module (browser build) =====
+    function makeImageModule() {
+      const { ImageModule } = window.docxtemplaterImageModule || {};
+      if (typeof ImageModule !== 'function') {
+        throw new Error('ImageModule não disponível. Verifique a tag <script> do image-module.');
+      }
+      return new ImageModule({
+        getImage(tagValue) {
           if (tagValue instanceof Uint8Array) return tagValue;
           if (tagValue instanceof ArrayBuffer) return new Uint8Array(tagValue);
           if (typeof tagValue === 'string' && tagValue.startsWith('data:')) {
@@ -358,27 +363,24 @@
           }
           return null;
         },
-        getSize: function() {
-          // Tamanho padrão (px) -> docxtemplater converte
-          return [600, 350];
-        }
+        getSize() { return [600, 350]; } // px (o módulo converte)
       });
     }
 
-     async function fetchArrayBuffer(urlBase) {
-     const url = urlBase.endsWith('.docx') ? urlBase : `${urlBase}.docx`;
-     const resp = await fetch(url);
+    // ===== Util =====
+    async function fetchArrayBuffer(urlBase) {
+      const url = urlBase.endsWith('.docx') ? urlBase : `${urlBase}.docx`;
+      const resp = await fetch(url);
       if (!resp.ok) throw new Error('Template não encontrado: ' + url);
-     return await resp.arrayBuffer();
-      }
+      return await resp.arrayBuffer();
+    }
 
     function renderDocx(templateArrayBuffer, data) {
       const zip = new PizZip(templateArrayBuffer);
-      const imageModule = makeImageModule(data);
+      const imageModule = makeImageModule();
       const doc = new window.docxtemplater().loadZip(zip).attachModule(imageModule);
 
-      // docxtemplater trabalha com chaves SEM as chaves externas (usa tags puras).
-      // Para manter a experiência com {{CHAVE}}, mapeamos para CHAVE internamente:
+      // Mapear {{CHAVE}} -> CHAVE para o docxtemplater
       const plainData = {};
       Object.entries(data).forEach(([k, v]) => {
         const m = k.match(/^\{\{\s*(.+?)\s*\}\}$/);
@@ -446,7 +448,7 @@
         setDiag(false, diag);
 
         for (let i = 0; i < chosen.length; i++) {
-          setProgress(Math.round( (i / chosen.length) * 100 ), `Processando ${chosen[i]}…`);
+          setProgress(Math.round((i / chosen.length) * 100), `Processando ${chosen[i]}…`);
           await generateOneDocx(currentCompany, chosen[i], data);
         }
 
@@ -459,7 +461,6 @@
         setTimeout(() => showProgress(false), 1200);
       }
     });
-
   </script>
 </body>
 </html>
