@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos — Inova Inox & Porto Stone</title>
+  <title>Gerador de Contratos — PDF</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,33 +19,27 @@
     }
   </script>
 
-  <!-- Docxtemplater (gera DOCX) -->
-  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.44.0/build/docxtemplater.js"></script>
-
-  <!-- jsPDF (gera PDF simples de verdade, não renomeia DOCX) -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <!-- pdf-lib: preencher PDFs com campos de formulário -->
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 </head>
 
 <body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
   <div class="max-w-5xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Gerador de Contratos</h1>
+      <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Gerador de Contratos (PDF)</h1>
       <div class="text-sm text-gray-500">Inova Inox & Porto Stone</div>
     </header>
 
-    <!-- Step 1 -->
+    <!-- PASSO 1: escolher empresa -->
     <section id="step-company" class="grid md:grid-cols-2 gap-4">
       <button data-company="InovaInox" class="company-card group rounded-2xl bg-white shadow-card border border-gray-100 p-6 text-left hover:shadow-lg transition">
         <div class="flex items-center gap-3">
           <div class="h-11 w-11 rounded-xl bg-inox/90 text-white grid place-items-center text-lg">II</div>
           <div>
             <div class="font-semibold text-lg">Inova Inox</div>
-            <div class="text-gray-500 text-sm">Contrato, OS e Capa</div>
+            <div class="text-gray-500 text-sm">Contrato, OS e Capa (PDF com campos)</div>
           </div>
         </div>
-        <div class="mt-4 text-sm text-gray-600">Clique para configurar os campos e gerar.</div>
       </button>
 
       <button data-company="PortoStone" class="company-card group rounded-2xl bg-white shadow-card border border-gray-100 p-6 text-left hover:shadow-lg transition">
@@ -53,42 +47,31 @@
           <div class="h-11 w-11 rounded-xl bg-marble text-white grid place-items-center text-lg">PS</div>
           <div>
             <div class="font-semibold text-lg">Porto Stone</div>
-            <div class="text-gray-500 text-sm">Contrato e OS</div>
+            <div class="text-gray-500 text-sm">Contrato e OS (PDF com campos)</div>
           </div>
         </div>
-        <div class="mt-4 text-sm text-gray-600">Clique para configurar os campos e gerar.</div>
       </button>
     </section>
 
-    <!-- Step 2 -->
+    <!-- PASSO 2: preencher e gerar -->
     <section id="step-config" class="hidden mt-6">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
           <button id="btn-back" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">← Voltar</button>
           <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
         </div>
-        <div class="text-xs text-gray-500">Templates: <code class="bg-gray-100 px-1 rounded">templates/&lt;Empresa&gt;/&lt;Documento&gt;.docx</code></div>
+        <div class="text-xs text-gray-500">Caminho: <code class="bg-gray-100 px-1 rounded">templates/&lt;Empresa&gt;/&lt;Documento&gt;.pdf</code></div>
       </div>
 
       <div class="grid md:grid-cols-3 gap-4">
-        <!-- Doc options -->
+        <!-- Documentos -->
         <div class="rounded-2xl bg-white shadow-card border border-gray-100 p-5">
           <div class="font-medium mb-3">Escolha os documentos</div>
           <div id="doc-options" class="space-y-2 text-sm"></div>
-
-          <div class="mt-4">
-            <div class="font-medium mb-1">Saída</div>
-            <label class="flex items-center gap-2 mb-1">
-              <input type="checkbox" id="out-docx" class="accent-inox" checked /> <span>Word (.docx)</span>
-            </label>
-            <label class="flex items-center gap-2">
-              <input type="checkbox" id="out-pdf" class="accent-inox" /> <span>PDF (simples)</span>
-            </label>
-            <p class="text-xs text-gray-500 mt-2">O PDF é gerado com jsPDF (texto dos campos). Ele não replica o layout do DOCX.</p>
-          </div>
+          <p class="text-xs text-gray-500 mt-3">Os PDFs precisam ter **campos de formulário** (AcroForm) com nomes iguais às chaves.</p>
         </div>
 
-        <!-- Fields -->
+        <!-- Campos -->
         <div class="rounded-2xl bg-white shadow-card border border-gray-100 p-5 md:col-span-2">
           <div class="font-medium mb-3">Campos</div>
           <div id="fields" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
@@ -99,27 +82,29 @@
               <button id="add-custom" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">+ Adicionar</button>
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
-            <p class="text-xs text-gray-500 mt-1">Use o nome exato da chave do template (ex.: <code>{{ORDEM_SERVICO}}</code> → <b>ORDEM_SERVICO</b>).</p>
+            <p class="text-xs text-gray-500 mt-1">Use o nome exato do campo no PDF (ex.: <b>NOME_CONTRATANTE</b>).</p>
           </div>
         </div>
       </div>
 
       <div class="flex items-center justify-end gap-3 mt-6">
-        <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-inox text-white hover:opacity-95">Gerar documento(s)</button>
+        <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-inox text-white hover:opacity-95">Gerar PDF(s)</button>
       </div>
     </section>
 
-    <footer class="text-center text-xs text-gray-400 mt-10">Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (sem barra inicial)</footer>
+    <footer class="text-center text-xs text-gray-400 mt-10">
+      Coloque seus templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (PDFs com campos).
+    </footer>
   </div>
 
   <script>
-    // ===== Config =====
+    // ===== Configuração =====
     const DOCS = {
       InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'],
       PortoStone: ['Contrato', 'Ordem_de_Servico']
     };
 
-    // Campos comuns (Contrato Inova Inox)
+    // Campos comuns (Contrato)
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -150,7 +135,7 @@
       }
     };
 
-    // ===== Estado / helpers =====
+    // ===== Estado & Helpers =====
     let currentCompany = null;
     const el = s => document.querySelector(s);
     const els = s => Array.from(document.querySelectorAll(s));
@@ -214,16 +199,10 @@
     el('#add-custom').addEventListener('click', () => {
       el('#custom-fields').insertAdjacentHTML('beforeend', `
         <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
-          <input placeholder="Chave (ex.: OBSERVACOES)" data-type="custom-key" class="col-span-2 rounded-xl border border-gray-300 px-3 py-2" />
+          <input placeholder="Chave (igual no PDF)" data-type="custom-key" class="col-span-2 rounded-xl border border-gray-300 px-3 py-2" />
           <input placeholder="Valor" data-type="custom-val" class="md:col-span-3 rounded-xl border border-gray-300 px-3 py-2" />
         </div>`);
     });
-
-    // ===== Util =====
-    function loadBinary(url) {
-      return fetch(url).then(r => { if(!r.ok) throw new Error('Não encontrei '+url); return r.arrayBuffer(); })
-                       .then(buf => new Uint8Array(buf));
-    }
 
     function collectData() {
       const data = {};
@@ -235,7 +214,6 @@
         }
         data[key] = val;
       });
-      // custom
       const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
       ks.forEach((kEl, i) => {
         const key = (kEl.value || '').trim();
@@ -245,50 +223,56 @@
       return data;
     }
 
-    // ===== Saídas =====
-    async function generateOneDocx(company, docName, data) {
-      // DOCX puro — sem módulo de imagem (evita erro). Se precisar de fotos depois, adicionamos com fallback.
-      const url = `templates/${company}/${docName}.docx`;
-      const content = await loadBinary(url);
-      const zip = new PizZip(content);
-      const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-      doc.setData(data);
-      doc.render();
-      const out = doc.getZip().generate({ type: 'blob' });
+    async function generateOnePDF(company, docName, data) {
+      const url = `templates/${company}/${docName}.pdf`;
+      let bytes;
+      try {
+        bytes = await fetch(url).then(r => {
+          if (!r.ok) throw new Error('Template não encontrado: ' + url);
+          return r.arrayBuffer();
+        });
+      } catch (e) {
+        alert(e.message);
+        throw e;
+      }
+
+      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+      const form = pdfDoc.getForm(); // precisa ser um PDF com AcroForm
+
+      // Preencher cada campo se existir
+      Object.entries(data).forEach(([key, value]) => {
+        const tf = form.getTextField?.(key);
+        const cb = form.getCheckBox?.(key);
+        const dd = form.getDropdown?.(key);
+        try {
+          if (tf) tf.setText(String(value ?? ''));
+          else if (dd) dd.select(String(value ?? ''));
+          else if (cb) { String(value).toLowerCase() === 'true' ? cb.check() : cb.uncheck(); }
+          // se não existir campo com esse nome, apenas ignora
+        } catch (_) { /* continua */ }
+      });
+
+      // Achatar para virar conteúdo estático (evita edição acidental)
+      try { form.flatten(); } catch (_) {}
+
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(out);
-      a.download = `${company}_${docName}_Preenchido.docx`;
+      a.href = URL.createObjectURL(blob);
+      a.download = `${company}_${docName}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
     }
 
-    function generateSimplePDF(company, docName, data) {
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-      let y = 40;
-      pdf.setFont('helvetica','bold'); pdf.setFontSize(14);
-      pdf.text(`${company} — ${docName}`, 40, y); y += 20;
-      pdf.setFont('helvetica',''); pdf.setFontSize(11);
-      Object.entries(data).forEach(([k,v]) => {
-        const lines = pdf.splitTextToSize(`${k}: ${String(v).replace(/\n/g,' ')}`, 515);
-        lines.forEach(ln => { y += 14; if (y > 780) { pdf.addPage(); y = 40; } pdf.text(ln, 40, y); });
-      });
-      pdf.save(`${company}_${docName}.pdf`);
-    }
-
-    // ===== Ação principal =====
+    // Gerar
     el('#btn-generate').addEventListener('click', async () => {
-      const outDocx = el('#out-docx').checked;
-      const outPdf  = el('#out-pdf').checked;
       const data = collectData();
-
       const chosen = DOCS[currentCompany].filter(name => el('#doc-'+name)?.checked);
       if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
-      if (!outDocx && !outPdf) { alert('Selecione pelo menos um tipo de saída (Word/PDF).'); return; }
 
       for (const docName of chosen) {
-        if (outDocx) { try { await generateOneDocx(currentCompany, docName, data); } catch (e) { alert('Erro ao gerar DOCX: '+e.message); console.error(e); } }
-        if (outPdf)  { try { generateSimplePDF(currentCompany, docName, data); }  catch (e) { alert('Erro ao gerar PDF: '+e.message); console.error(e); } }
+        try { await generateOnePDF(currentCompany, docName, data); }
+        catch (e) { console.error(e); }
       }
     });
   </script>
