@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gerador de Contratos – Inova Inox & Porto Stone</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.44.0/build/docxtemplater.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-3xl p-6 bg-white shadow-xl rounded-2xl">
+    <h1 class="text-2xl font-semibold mb-4 text-center">Gerador de Contratos</h1>
+    <p class="text-center mb-6 text-gray-600">Escolha a empresa abaixo:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <button onclick="selectCompany('InovaInox')" class="p-6 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700">Inova Inox</button>
+      <button onclick="selectCompany('PortoStone')" class="p-6 rounded-xl bg-yellow-500 text-white font-medium hover:bg-yellow-600">Porto Stone</button>
+    </div>
+
+    <div id="formSection" class="hidden mt-8">
+      <h2 class="text-lg font-semibold mb-4 text-center" id="companyLabel"></h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <input id="NOME_CONTRATANTE" placeholder="Nome do Cliente" class="border rounded-lg p-2 w-full" />
+        <input id="CPF_CONTRATANTE" placeholder="CPF/CNPJ" class="border rounded-lg p-2 w-full" />
+        <input id="ENDERECO_CONTRATANTE" placeholder="Endereço" class="border rounded-lg p-2 w-full" />
+        <input id="TELEFONE_CONTRATANTE" placeholder="Telefone" class="border rounded-lg p-2 w-full" />
+        <input id="TIPO_DE_PROJETO" placeholder="Tipo de Projeto" class="border rounded-lg p-2 w-full" />
+        <input id="VALOR_TOTAL" placeholder="Valor Total" class="border rounded-lg p-2 w-full" />
+      </div>
+
+      <div class="mb-4">
+        <p class="font-medium mb-2">Escolha os documentos:</p>
+        <div id="documentOptions" class="space-y-2"></div>
+      </div>
+
+      <button onclick="generateDocs()" class="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Gerar Documentos</button>
+    </div>
+  </div>
+
+  <script>
+    const docs = {
+      InovaInox: ["Contrato", "Ordem_de_Servico", "Capa"],
+      PortoStone: ["Contrato", "Ordem_de_Servico"]
+    };
+
+    let currentCompany = null;
+
+    function selectCompany(name) {
+      currentCompany = name;
+      document.getElementById("companyLabel").innerText = name;
+      const section = document.getElementById("formSection");
+      section.classList.remove("hidden");
+
+      const opts = document.getElementById("documentOptions");
+      opts.innerHTML = "";
+      docs[name].forEach(doc => {
+        opts.innerHTML += `
+          <label class='flex items-center gap-2'>
+            <input type='checkbox' class='accent-blue-600' id='${doc}' checked>
+            <span>${doc.replace(/_/g, " ")}</span>
+          </label>`;
+      });
+    }
+
+    function getField(id) {
+      return document.getElementById(id).value || "";
+    }
+
+    async function generateDocs() {
+      const data = {
+        NOME_CONTRATANTE: getField("NOME_CONTRATANTE"),
+        CPF_CONTRATANTE: getField("CPF_CONTRATANTE"),
+        ENDERECO_CONTRATANTE: getField("ENDERECO_CONTRATANTE"),
+        TELEFONE_CONTRATANTE: getField("TELEFONE_CONTRATANTE"),
+        TIPO_DE_PROJETO: getField("TIPO_DE_PROJETO"),
+        VALOR_TOTAL: getField("VALOR_TOTAL"),
+        DATA_EMISSAO_CONTRATO: new Date().toLocaleDateString("pt-BR")
+      };
+
+      const selected = docs[currentCompany].filter(d => document.getElementById(d)?.checked);
+      for (const docName of selected) {
+        const url = `templates/${currentCompany}/${docName}.docx`;
+        const content = await fetch(url).then(r => r.arrayBuffer());
+        const zip = new PizZip(content);
+        const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+        doc.setData(data);
+        doc.render();
+        const blob = doc.getZip().generate({ type: "blob" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${currentCompany}_${docName}_Preenchido.docx`;
+        a.click();
+      }
+    }
+  </script>
+</body>
+</html>
