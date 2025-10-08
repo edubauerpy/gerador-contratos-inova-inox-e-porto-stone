@@ -14,7 +14,7 @@
   <!-- Confetti (efeito) -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide (bundle UMD, expõe window.lucide) -->
+  <!-- Lucide Icons (UMD: expõe window.lucide) -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <style>
@@ -183,41 +183,20 @@
       },
     };
 
-    // Heurísticas de chaves que devem sumir do texto (imagens)
     const IMAGE_KEY_HINT = /(DESENHO|FOTO)/i;
-
-    // ===== Helpers UI =====
     const el  = (s) => document.querySelector(s);
     const els = (s) => Array.from(document.querySelectorAll(s));
     const wrapKey = (k) => `{{${k}}}`;
 
-    // ===== Regexes =====
-    const RE_PLACEHOLDER_BLOCK = /\{\{(?:.|\n)*?\}\}/ug; // bloco bruto atravessando tags
-    const RE_XML_TAG = /<[^>]+>/g;
-    const RE_SPACES = /\s+/g;
-    const RE_CLEAN_PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/ug;
-
-    function normalize_placeholder_block(block) {
-      const textOnly = block.replace(RE_XML_TAG, "");
-      let inner = textOnly.trim();
-      if (inner.startsWith("{{")) inner = inner.slice(2);
-      if (inner.endsWith("}}")) inner = inner.slice(0, -2);
-      inner = inner.replace(RE_SPACES, "");
-      return "{{" + inner + "}}";
-    }
-    function normalize_xml(xml) {
-      if (!xml.includes("{{") || !xml.includes("}}")) return xml;
-      return xml.replace(RE_PLACEHOLDER_BLOCK, m => normalize_placeholder_block(m));
-    }
+    // Inicializa Lucide quando o DOM estiver pronto
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide && lucide.createIcons) {
+        lucide.createIcons();   // substitui <i data-lucide="..."> por <svg>
+      }
+    });
 
     // ===== Navegação =====
     let currentCompany = null;
-
-    // Inicializa ícones do Lucide
-    document.addEventListener('DOMContentLoaded', () => {
-      if (window.lucide && lucide.createIcons) lucide.createIcons();
-    });
-
     els('.company-card').forEach((btn) => {
       btn.addEventListener('click', () => {
         currentCompany = btn.dataset.company;
@@ -225,8 +204,6 @@
         renderDocOptions();
         renderFields();
         el('#step-config').classList.remove('hidden');
-        // caso apareçam novos <i data-lucide> no futuro, re-render:
-        if (window.lucide && lucide.createIcons) lucide.createIcons();
       });
     });
     el('#btn-back').addEventListener('click', () => location.reload());
@@ -325,7 +302,6 @@
       return await resp.arrayBuffer();
     }
 
-    // Insere nova página com imagens ao final
     function appendImagesToDocument(zip, imagesU8) {
       if (!imagesU8.length) return zip;
       const mediaNames = imagesU8.map((u8, i) => `word/media/compat_img_${Date.now()}_${i}.png`);
@@ -387,14 +363,11 @@
       files.forEach(f => {
         let xml = f.asText();
         xml = normalize_xml(xml);
-
         Object.entries(replacements).forEach(([k, v]) => {
           const pattern = new RegExp(String.raw`\{\{\s*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`, 'g');
           xml = xml.replace(pattern, v);
         });
-
         xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
-
         zip.file(f.name, xml);
       });
       return zip;
