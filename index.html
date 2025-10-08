@@ -365,11 +365,12 @@
       });
     }
 
-    async function fetchArrayBuffer(url) {
-      const resp = await fetch(url);
+     async function fetchArrayBuffer(urlBase) {
+     const url = urlBase.endsWith('.docx') ? urlBase : `${urlBase}.docx`;
+     const resp = await fetch(url);
       if (!resp.ok) throw new Error('Template não encontrado: ' + url);
-      return await resp.arrayBuffer();
-    }
+     return await resp.arrayBuffer();
+      }
 
     function renderDocx(templateArrayBuffer, data) {
       const zip = new PizZip(templateArrayBuffer);
