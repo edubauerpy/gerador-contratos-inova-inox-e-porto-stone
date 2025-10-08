@@ -90,7 +90,7 @@
           <div class="font-medium mb-3">Escolha os documentos</div>
           <div id="doc-options" class="space-y-2 text-sm"></div>
           <p class="text-xs text-gray-500 mt-3">
-            Os templates precisam ser PDFs com <b>campos de formulário</b> (AcroForm) nomeados conforme as chaves.
+            Os templates precisam ser PDFs com <b>campos de formulário</b> (AcroForm) nomeados com as chaves, ex.: <code>{{NOME_CONTRATANTE}}</code>.
           </p>
         </div>
 
@@ -105,7 +105,9 @@
               <button id="add-custom" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">+ Adicionar</button>
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
-            <p class="text-xs text-gray-500 mt-1">Use o nome exato do campo no PDF (ex.: <b>NOME_CONTRATANTE</b>).</p>
+            <p class="text-xs text-gray-500 mt-1">
+              Use o nome exato do campo no PDF (com chaves), ex.: <b>{{NOME_CONTRATANTE}}</b>.
+            </p>
           </div>
         </div>
       </div>
@@ -160,7 +162,7 @@
       PortoStone: ['Contrato', 'Ordem_de_Servico']
     };
 
-    // Campos "padrão" que geralmente existem nos PDFs
+    // Campos "padrão" (UI usa nomes sem chaves; no PDF usamos {{CHAVE}})
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -171,7 +173,7 @@
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' }
     ];
 
-    // Campos adicionais por documento de cada empresa
+    // Campos adicionais por documento
     const FIELDS_BY_DOC = {
       InovaInox: {
         Contrato: [],
@@ -191,12 +193,19 @@
       }
     };
 
-    // ===== Estado & Helpers =====
-    let currentCompany = null;
-    const el = s => document.querySelector(s);
+    // ===== Helpers =====
+    const el  = s => document.querySelector(s);
     const els = s => Array.from(document.querySelectorAll(s));
+    const wrapKey = k => `{{${k}}}`; // força padrão com chaves
+    const norm = s => String(s || '')
+      .replace(/^\s+|\s+$/g, '')
+      .replace(/[{}]/g, '')
+      .replace(/\s+/g, '')
+      .toLowerCase();
 
-    // Navegação Empresa -> Config
+    // ===== Navegação Empresa -> Config =====
+    let currentCompany = null;
+
     els('.company-card').forEach(btn => {
       btn.addEventListener('click', () => {
         currentCompany = btn.dataset.company;
@@ -236,7 +245,8 @@
 
     function fieldInput({ key, label, type='text', placeholder='' }) {
       const id = 'f-'+key;
-      const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
+      const keyHint = wrapKey(key); // exibir dica com {{CHAVE}}
+      const labelEl = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${keyHint})</span></label>`;
       if (type === 'textarea') {
         return `<div class="flex flex-col gap-1">${labelEl}
           <textarea id="${id}" data-key="${key}" rows="4" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"></textarea>
@@ -255,26 +265,33 @@
     el('#add-custom').addEventListener('click', () => {
       el('#custom-fields').insertAdjacentHTML('beforeend', `
         <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
-          <input placeholder="Chave (igual no PDF)" data-type="custom-key" class="col-span-2 rounded-xl border border-gray-300 px-3 py-2" />
+          <input placeholder="Chave (ex.: {{NOME_CONTRATANTE}})" data-type="custom-key" class="col-span-2 rounded-xl border border-gray-300 px-3 py-2" />
           <input placeholder="Valor" data-type="custom-val" class="md:col-span-3 rounded-xl border border-gray-300 px-3 py-2" />
         </div>`);
     });
 
     function collectData() {
       const data = {};
+      // Campos padrão (UI usa sem chaves; no PDF usamos com chaves)
       els('#fields [data-key]').forEach(inp => {
-        const key = inp.dataset.key;
+        const key = inp.dataset.key; // ex.: NOME_CONTRATANTE
         let val = (inp.value || '').toString();
         if (key === 'DATA_EMISSAO_CONTRATO' && !val) {
           val = new Date().toLocaleDateString('pt-BR');
         }
+        // salvamos nas duas formas para compatibilidade, mas priorizamos {{CHAVE}}
+        data[wrapKey(key)] = val;
         data[key] = val;
       });
+      // Campos personalizados (usuário pode digitar já com {{ }}, ou sem)
       const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
       ks.forEach((kEl, i) => {
-        const key = (kEl.value || '').trim();
+        const rawKey = (kEl.value || '').trim(); // pode vir {{CHAVE}} ou CHAVE
         const val = el('#custom-fields').querySelectorAll('[data-type="custom-val"]')[i].value || '';
-        if (key) data[key] = val;
+        if (!rawKey) return;
+        const keyNoBraces = rawKey.replace(/[{}]/g,'').trim();
+        data[wrapKey(keyNoBraces)] = val;
+        data[keyNoBraces] = val;
       });
       return data;
     }
@@ -282,14 +299,8 @@
     // ===== UI Progresso (modal centralizado) =====
     function showProgress(show=true) {
       const m = el('#progress-modal');
-      if (show) {
-        m.classList.remove('hidden');
-        // força centralização com flex sempre
-        m.style.display = 'flex';
-      } else {
-        m.classList.add('hidden');
-        m.style.display = 'none';
-      }
+      if (show) { m.classList.remove('hidden'); m.style.display = 'flex'; }
+      else { m.classList.add('hidden'); m.style.display = 'none'; }
     }
     function setProgress(pct, msg='') {
       const bar = el('#progress-bar');
@@ -322,20 +333,47 @@
       box.classList.toggle('hidden', hidden);
     }
 
-    function listPdfFieldNames(pdfForm) {
-      // pdf-lib não expõe 100% da API pública para enumerar tudo,
-      // mas conseguimos extrair nomes pelos campos conhecidos (text, checkbox, dropdown)
-      const names = new Set();
+    function listPdfFieldsUnsafe(pdfForm) {
+      // Tenta inspecionar os campos do AcroForm (API interna/privada do pdf-lib — usar com cautela)
+      const names = [];
       try {
-        const ctx = pdfForm.acroForm.getFields();
-        ctx.forEach(f => {
+        const fields = pdfForm.acroForm.getFields();
+        fields.forEach(f => {
           try {
             const n = f.getName ? f.getName() : f.getPartialName ? f.getPartialName() : null;
-            if (n) names.add(String(n));
+            if (n) names.push(String(n));
           } catch(_) {}
         });
-      } catch(_) { /* fallback silencioso */ }
+      } catch(_) {}
       return names;
+    }
+
+    function buildFieldIndex(form) {
+      // Constrói índices por:
+      // 1) nome exato
+      // 2) nome sem chaves normalizado (norm)
+      const byExact = new Map();
+      const byNorm  = new Map();
+
+      // Descobre todos os nomes possíveis tentando obter campos por nome diretamente não é trivial;
+      // usamos a varredura acima (unsafe) para montar o catálogo.
+      const names = listPdfFieldsUnsafe(form);
+      names.forEach(name => {
+        const exact = String(name);
+        const nrm   = norm(exact);
+        byExact.set(exact, exact);
+        if (!byNorm.has(nrm)) byNorm.set(nrm, exact);
+      });
+
+      return { byExact, byNorm, names };
+    }
+
+    function tryGetAnyField(form, fieldName) {
+      // Tenta como text, dropdown e checkbox — sem erro se não existir
+      try { const f = form.getTextField?.(fieldName); if (f) return { type: 'text', f }; } catch(_) {}
+      try { const f = form.getDropdown?.(fieldName); if (f) return { type: 'dropdown', f }; } catch(_) {}
+      try { const f = form.getCheckBox?.(fieldName); if (f) return { type: 'checkbox', f }; } catch(_) {}
+      return null;
     }
 
     // ===== PDF =====
@@ -358,54 +396,90 @@
       setProgress(55, 'Preparando formulário…');
       const form = pdfDoc.getForm(); // requer PDF com AcroForm
 
-      // ——— Diagnóstico dos nomes de campos no PDF ———
-      const pdfFieldNames = listPdfFieldNames(form);
-      const keysUser = Object.keys(data);
-      const notFound = [];
-      const foundButEmpty = [];
+      // Índices de nomes dos campos
+      const { byExact, byNorm, names: allPdfNames } = buildFieldIndex(form);
+
+      // Diagnóstico
+      const notFound = [];       // chaves da UI/usuário que não acharam campo
+      const foundButEmpty = [];  // campos no PDF sem valor atribuído
 
       setProgress(70, 'Preenchendo campos…');
 
-      // Preenchimento chave a chave
-      keysUser.forEach((key) => {
-        const value = data[key];
-        let hit = false;
-        try {
-          const tf = form.getTextField?.(key);
-          if (tf) { tf.setText(String(value ?? '')); hit = true; }
-        } catch(_) {}
-        try {
-          const dd = form.getDropdown?.(key);
-          if (dd) { dd.select(String(value ?? '')); hit = true; }
-        } catch(_) {}
-        try {
-          const cb = form.getCheckBox?.(key);
-          if (cb) {
-            const v = String(value ?? '').toLowerCase().trim();
-            (v === 'true' || v === '1' || v === 'on' || v === 'x') ? cb.check() : cb.uncheck();
-            hit = true;
-          }
-        } catch(_) {}
+      // Preencher: SEMPRE prioriza {{CHAVE}}
+      const filledSet = new Set(); // nomes reais de campos que foram preenchidos
+      const userKeys = Object.keys(data);
 
-        if (!hit) notFound.push(key);
-      });
+      for (const userKey of userKeys) {
+        const val = data[userKey];
+
+        // 1) Se usuário informou sem chaves, derive também {{CHAVE}}
+        const kNoBraces = userKey.replace(/[{}]/g, '').trim();
+        const kWith     = wrapKey(kNoBraces);
+        const candidates = [];
+
+        // Se a chave já veio com chaves, começamos por ela
+        if (/^\s*\{\{.+\}\}\s*$/.test(userKey)) {
+          candidates.push(userKey);
+          candidates.push(kNoBraces); // fallback sem chaves
+        } else {
+          // Se veio sem, primeiro tentamos com chaves
+          candidates.push(kWith);
+          candidates.push(userKey); // fallback sem chaves
+        }
+
+        // 2) Para cada candidato, tentamos:
+        //  - match exato (byExact)
+        //  - match por normalização (byNorm)
+        let hit = false;
+        for (const c of candidates) {
+          const exact = byExact.get(c);
+          const via = exact || byExact.get(String(c)) || null;
+          let targetName = via;
+
+          if (!targetName) {
+            const nrm = norm(c);
+            const viaNorm = byNorm.get(nrm);
+            if (viaNorm) targetName = viaNorm;
+          }
+
+          if (targetName) {
+            const field = tryGetAnyField(form, targetName);
+            if (field) {
+              if (field.type === 'text') {
+                field.f.setText(String(val ?? ''));
+              } else if (field.type === 'dropdown') {
+                try { field.f.select(String(val ?? '')); } catch(_) { /* se opção não existir, ignora */ }
+              } else if (field.type === 'checkbox') {
+                const v = String(val ?? '').toLowerCase().trim();
+                (v === 'true' || v === '1' || v === 'on' || v === 'x') ? field.f.check() : field.f.uncheck();
+              }
+              filledSet.add(targetName);
+              hit = true;
+              break; // não tentar mais candidatos
+            }
+          }
+        }
+
+        if (!hit) {
+          // registra a chave "preferencial" com chaves para facilitar o ajuste do template
+          notFound.push(kWith);
+        }
+      }
 
       // Atualiza aparências dos campos para garantir render
       try { form.updateFieldAppearances?.(); } catch(_) {}
 
-      // Quais campos do PDF ficaram sem valor?
-      if (pdfFieldNames && pdfFieldNames.size) {
-        pdfFieldNames.forEach(n => {
-          if (!(n in data)) foundButEmpty.push(n);
-        });
-      }
+      // Campos do PDF que ficaram sem valor
+      allPdfNames.forEach(n => {
+        if (!filledSet.has(n)) foundButEmpty.push(n);
+      });
 
-      // Mostra diagnóstico se houver algo para ajustar
+      // Diagnóstico
       if (notFound.length || foundButEmpty.length) {
         const html = `
           ${notFound.length ? `<div><b>Chaves não encontradas no PDF</b>: ${notFound.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
           ${foundButEmpty.length ? `<div class="mt-1"><b>Campos do PDF sem valor</b>: ${foundButEmpty.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
-          <div class="mt-1 text-gray-500">Dica: use "Campos personalizados" para bater o nome exato do campo ou ajuste o template.</div>
+          <div class="mt-1 text-gray-500">Padronize os campos do PDF como <code>{{CHAVE}}</code> (ex.: <code>{{NOME_CONTRATANTE}}</code>) ou use “Campos personalizados”.</div>
         `;
         setDiag(false, html);
       }
@@ -437,7 +511,6 @@
       setProgress(100, 'Concluído!');
       fireConfetti();
       toastOK();
-      // fecha o modal depois de um tempinho
       setTimeout(() => { showProgress(false); box.classList.add('hidden'); URL.revokeObjectURL(urlBlob); }, 1600);
     }
 
@@ -449,7 +522,6 @@
       const chosen = DOCS[currentCompany].filter(name => el('#doc-'+name)?.checked);
       if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
 
-      // Gera um por um (o modal e diagnóstico reaproveitam)
       for (const docName of chosen) {
         try { await generateOnePDF(currentCompany, docName, data); }
         catch (e) { console.error(e); }
