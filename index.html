@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos — PDF (Busca literal {{CHAVE}})</title>
+  <title>Gerador de Contratos — DOCX (docxtemplater)</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,10 +19,11 @@
     }
   </script>
 
-  <!-- pdf-lib -->
-  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-  <!-- pako (inflate/deflate) para lidar com FlateDecode -->
-  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+  <!-- Libs DOCX -->
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.42.5/build/docxtemplater.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater-image-module-free@1.2.3/build/index.min.js"></script>
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
@@ -45,8 +46,8 @@
 <body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
   <div class="max-w-5xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Gerador de Contratos (PDF)</h1>
-      <div class="text-sm text-gray-500">Busca literal de <code>{{CHAVES}}</code> (sem AcroForm)</div>
+      <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Gerador de Contratos (DOCX)</h1>
+      <div class="text-sm text-gray-500">Inova Inox & Porto Stone</div>
     </header>
 
     <!-- PASSO 1: escolher empresa -->
@@ -56,7 +57,7 @@
           <div class="h-11 w-11 rounded-xl bg-inox/90 text-white grid place-items-center text-lg">II</div>
           <div>
             <div class="font-semibold text-lg">Inova Inox</div>
-            <div class="text-gray-500 text-sm">Contrato, OS e Capa (PDF com {{CHAVES}})</div>
+            <div class="text-gray-500 text-sm">Contrato, OS e Capa (DOCX com {{CHAVES}})</div>
           </div>
         </div>
       </button>
@@ -66,7 +67,7 @@
           <div class="h-11 w-11 rounded-xl bg-marble text-white grid place-items-center text-lg">PS</div>
           <div>
             <div class="font-semibold text-lg">Porto Stone</div>
-            <div class="text-gray-500 text-sm">Contrato e OS (PDF com {{CHAVES}})</div>
+            <div class="text-gray-500 text-sm">Contrato e OS (DOCX com {{CHAVES}})</div>
           </div>
         </div>
       </button>
@@ -79,7 +80,7 @@
           <button id="btn-back" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">← Voltar</button>
           <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
         </div>
-        <div class="text-xs text-gray-500">Caminho: <code class="bg-gray-100 px-1 rounded">templates/&lt;Empresa&gt;/&lt;Documento&gt;.pdf</code></div>
+        <div class="text-xs text-gray-500">Caminho: <code class="bg-gray-100 px-1 rounded">templates/&lt;Empresa&gt;/&lt;Documento&gt;.docx</code></div>
       </div>
 
       <div class="grid md:grid-cols-3 gap-4">
@@ -88,7 +89,7 @@
           <div class="font-medium mb-3">Escolha os documentos</div>
           <div id="doc-options" class="space-y-2 text-sm"></div>
           <p class="text-xs text-gray-500 mt-3">
-            Use placeholders literais no PDF, ex.: <code>{{NOME_CONTRATANTE}}</code>, <code>{{VALOR_TOTAL}}</code>.
+            Os templates devem conter placeholders <b>{{CHAVE}}</b> (ex.: <code>{{NOME_CONTRATANTE}}</code>) no DOCX.
           </p>
         </div>
 
@@ -97,26 +98,33 @@
           <div class="font-medium mb-3">Campos</div>
           <div id="fields" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
 
+          <!-- Imagem do orçamento (opcional) -->
           <div class="mt-4">
+            <div class="font-medium mb-1">Imagem do orçamento ({{FOTO_ORÇAMENTO}})</div>
+            <input id="foto-input" type="file" accept="image/*" class="block w-full text-sm border rounded-xl px-3 py-2" />
+            <p class="text-xs text-gray-500 mt-1">Se o template tiver {{FOTO_ORÇAMENTO}}, selecione uma imagem.</p>
+          </div>
+
+          <div class="mt-5">
             <div class="flex items-center justify-between">
               <div class="font-medium">Campos personalizados</div>
               <button id="add-custom" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">+ Adicionar</button>
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
             <p class="text-xs text-gray-500 mt-1">
-              Digite exatamente como no PDF (com chaves), ex.: <b>{{NOME_CONTRATANTE}}</b>.
+              Use o nome exato da chave (com chaves), ex.: <b>{{PRAZO}}</b>.
             </p>
           </div>
         </div>
       </div>
 
       <div class="flex items-center justify-end gap-3 mt-6">
-        <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-inox text-white hover:opacity-95">Gerar PDF(s)</button>
+        <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-inox text-white hover:opacity-95">Gerar DOCX</button>
       </div>
     </section>
 
     <footer class="text-center text-xs text-gray-400 mt-10">
-      Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (PDFs com placeholders literais).
+      Templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (DOCX com {{CHAVES}}).
     </footer>
   </div>
 
@@ -139,7 +147,7 @@
       </div>
       <div id="diag" class="mt-4 hidden">
         <details class="text-xs text-gray-600">
-          <summary class="cursor-pointer font-medium">Diagnóstico</summary>
+          <summary class="cursor-pointer font-medium">Diagnóstico de chaves</summary>
           <div class="mt-2 space-y-2" id="diag-content"></div>
         </details>
       </div>
@@ -160,7 +168,6 @@
       PortoStone: ['Contrato', 'Ordem_de_Servico'],
     };
 
-    // Campos base (UI -> coletamos valores; no PDF procuramos {{CHAVE}})
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -261,28 +268,47 @@
         </div>`);
     });
 
-    function collectData() {
+    // Converte File -> ArrayBuffer
+    function fileToArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsArrayBuffer(file);
+      });
+    }
+
+    async function collectData() {
       const data = {};
+      // Campos padrão
       els('#fields [data-key]').forEach((inp) => {
         const key = inp.dataset.key;
         let val = (inp.value || '').toString();
         if (key === 'DATA_EMISSAO_CONTRATO' && !val) {
           val = new Date().toLocaleDateString('pt-BR');
         }
-        data[wrapKey(key)] = val; // SOMENTE com chaves
+        data[wrapKey(key)] = val;
       });
+      // Campos personalizados
       const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
       ks.forEach((kEl, i) => {
-        const rawKey = (kEl.value || '').trim();           // pode vir {{CHAVE}} ou CHAVE
+        const rawKey = (kEl.value || '').trim();
         const val = el('#custom-fields').querySelectorAll('[data-type="custom-val"]')[i].value || '';
         if (!rawKey) return;
         const norm = rawKey.startsWith('{{') ? rawKey : wrapKey(rawKey.replace(/[{}]/g,'').trim());
         data[norm] = val;
       });
+
+      // Imagem do orçamento (opcional) — chave {{FOTO_ORÇAMENTO}} ou {{FOTO_ORCAMENTO}}
+      const fimg = el('#foto-input').files?.[0];
+      if (fimg) {
+        const ab = await fileToArrayBuffer(fimg);
+        data['{{FOTO_ORÇAMENTO}}'] = new Uint8Array(ab);
+        data['{{FOTO_ORCAMENTO}}'] = new Uint8Array(ab); // variante sem acento se precisar
+      }
       return data;
     }
 
-    // ===== UI Progresso =====
     function showProgress(show = true) {
       const m = el('#progress-modal');
       if (show) { m.classList.remove('hidden'); m.style.display = 'flex'; }
@@ -308,7 +334,6 @@
       setTimeout(() => t.classList.add('hidden'), 1800);
     }
 
-    // ===== Diagnóstico =====
     function setDiag(hidden, html = '') {
       const box = el('#diag');
       const content = el('#diag-content');
@@ -316,201 +341,124 @@
       box.classList.toggle('hidden', hidden);
     }
 
-    // ===== Utils PDF =====
-    const { PDFName, PDFArray } = PDFLib;
-    const te = new TextEncoder();
-    const td = new TextDecoder('latin1'); // streams podem estar em WinAnsi/Latin1
-
-    function escapeRegex(str) {
-      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-    function pdfEscape(value) {
-      // Escapar (), \ para não quebrar strings PDF
-      return String(value)
-        .replace(/\\/g, '\\\\')
-        .replace(/\(/g, '\\(')
-        .replace(/\)/g, '\\)')
-        .replace(/\r/g, '\\r')
-        .replace(/\n/g, '\\n');
-    }
-
-    // Tenta inflar; se falhar, trata como texto não comprimido
-    function tryInflateToString(u8) {
-      try {
-        const inflated = pako.inflate(u8);
-        return { str: td.decode(inflated), compressed: true };
-      } catch (_) {
-        // não comprimido (ou outro filtro): tenta decodificar direto como latin1
-        try { return { str: td.decode(u8), compressed: false }; }
-        catch (e) { return { str: '', compressed: false, error: e }; }
-      }
-    }
-
-    function deflateOrEncode(str, wasCompressed) {
-      return wasCompressed ? pako.deflate(te.encode(str)) : te.encode(str);
-    }
-
-    // Substitui APENAS quando o placeholder aparece DENTRO de strings "(...)" do conteúdo
-    function replacePlaceholdersInContentString(content, replacements) {
-      const counts = {};
-      let updated = content;
-
-      for (const [ph, val] of Object.entries(replacements)) {
-        // Regex: \( \s* {{CHAVE}} \s* \)
-        const re = new RegExp('\\(\\s*' + escapeRegex(ph) + '\\s*\\)', 'g');
-        const before = (updated.match(re) || []).length;
-        if (before > 0) {
-          const escaped = '(' + pdfEscape(val) + ')';
-          updated = updated.replace(re, escaped);
-        }
-        counts[ph] = before;
-      }
-      return { updated, counts };
-    }
-
-    // Altera streams de conteúdo da página (array ou único)
-    function getContentsArray(pdfDoc, pageNode) {
-      let contents = pageNode.get(PDFName.of('Contents'));
-      if (!contents) return null;
-      contents = pdfDoc.context.lookup(contents);
-      if (contents instanceof PDFArray) return contents;
-      // Se for stream único, empacota em array sintético para fluxo uniforme
-      const arr = PDFArray.withContext(pdfDoc.context);
-      arr.push(pageNode.get(PDFName.of('Contents')));
-      return arr;
-    }
-
-    async function replacePlaceholdersInPdf(pdfDoc, replacements) {
-      const pages = pdfDoc.getPages();
-      const globalCounts = {}; // soma por placeholder
-      const pagesInfo = [];
-
-      for (let p = 0; p < pages.length; p++) {
-        const page = pages[p];
-        const pageNode = page.node;
-        const contentsArr = getContentsArray(pdfDoc, pageNode);
-        if (!contentsArr) continue;
-
-        let pageTotal = 0;
-        const perStreamInfo = [];
-
-        for (let i = 0; i < contentsArr.size(); i++) {
-          const ref = contentsArr.get(i);
-          const stream = pdfDoc.context.lookup(ref);
-          if (!stream || !stream.getContents) continue;
-
-          const raw = stream.getContents();
-          const { str, compressed } = tryInflateToString(raw);
-          if (str === '') continue;
-
-          const { updated, counts } = replacePlaceholdersInContentString(str, replacements);
-          // Acumula contagens
-          for (const [ph, c] of Object.entries(counts)) {
-            globalCounts[ph] = (globalCounts[ph] || 0) + c;
-            pageTotal += c;
+    // ===== Motor DOCX (docxtemplater) =====
+    // ImageModule: lê bytes de {{FOTO_ORÇAMENTO}} se fornecido
+    function makeImageModule(scopeData) {
+      return new window.ImageModule({
+        getImage: function(tagValue) {
+          // Aceita Uint8Array, ArrayBuffer, dataURL (string)
+          if (tagValue instanceof Uint8Array) return tagValue;
+          if (tagValue instanceof ArrayBuffer) return new Uint8Array(tagValue);
+          if (typeof tagValue === 'string' && tagValue.startsWith('data:')) {
+            const base64 = tagValue.split(',')[1];
+            const bin = atob(base64);
+            const u8 = new Uint8Array(bin.length);
+            for (let i=0;i<bin.length;i++) u8[i] = bin.charCodeAt(i);
+            return u8;
           }
-
-          if (updated !== str) {
-            const newBytes = deflateOrEncode(updated, compressed);
-            // cria novo stream e substitui a referência no array
-            const newStream = compressed
-              ? pdfDoc.context.flateStream(newBytes)
-              : pdfDoc.context.stream(newBytes);
-            const newRef = pdfDoc.context.register(newStream);
-            contentsArr.set(i, newRef);
-          }
-
-          perStreamInfo.push({ index: i, replaced: Object.values(counts).reduce((a,b)=>a+b,0) });
+          return null;
+        },
+        getSize: function() {
+          // Tamanho padrão (px) -> docxtemplater converte
+          return [600, 350];
         }
-
-        pagesInfo.push({ page: p+1, replaced: pageTotal, perStreamInfo });
-      }
-
-      return { globalCounts, pagesInfo };
+      });
     }
 
-    // ===== Geração =====
-    async function generateOnePDF(company, docName, data) {
-      showProgress(true); setDiag(true); setProgress(5, 'Baixando template…');
-      const url = `templates/${company}/${docName}.pdf`;
+    async function fetchArrayBuffer(url) {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Template não encontrado: ' + url);
+      return await resp.arrayBuffer();
+    }
 
-      let bytes;
-      try {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error('Template não encontrado: ' + url);
-        bytes = await resp.arrayBuffer();
-      } catch (e) {
-        setProgress(0, e.message); alert(e.message); showProgress(false); throw e;
-      }
+    function renderDocx(templateArrayBuffer, data) {
+      const zip = new PizZip(templateArrayBuffer);
+      const imageModule = makeImageModule(data);
+      const doc = new window.docxtemplater().loadZip(zip).attachModule(imageModule);
 
-      setProgress(35, 'Carregando PDF…');
-      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
-
-      // Monta dicionário apenas com chaves no formato {{CHAVE}}
-      const replacements = {};
+      // docxtemplater trabalha com chaves SEM as chaves externas (usa tags puras).
+      // Para manter a experiência com {{CHAVE}}, mapeamos para CHAVE internamente:
+      const plainData = {};
       Object.entries(data).forEach(([k, v]) => {
-        const key = k.startsWith('{{') ? k : wrapKey(k.replace(/[{}]/g,'').trim());
-        replacements[key] = v == null ? '' : String(v);
+        const m = k.match(/^\{\{\s*(.+?)\s*\}\}$/);
+        const plainKey = m ? m[1] : k;
+        plainData[plainKey] = v;
       });
 
-      setProgress(60, 'Substituindo placeholders…');
-      const { globalCounts, pagesInfo } = await replacePlaceholdersInPdf(pdfDoc, replacements);
-
-      // Diagnóstico
-      const notFound = Object.entries(replacements)
-        .filter(([k, _]) => (globalCounts[k] || 0) === 0)
-        .map(([k]) => k);
-
-      const diagHtml = `
-        <div><b>Ocorrências substituídas por chave:</b></div>
-        <ul class="list-disc pl-5">
-          ${Object.keys(replacements).map(k => `<li><code>${k}</code>: ${globalCounts[k] || 0}</li>`).join('')}
-        </ul>
-        ${notFound.length ? `<div class="mt-2 text-amber-700"><b>Não encontradas</b>: ${notFound.map(k=>`<code>${k}</code>`).join(', ')}</div>` : ''}
-        <div class="mt-2 text-gray-500">
-          Dica: se alguma chave estiver com 0, o PDF pode ter fragmentado o texto (ex.: <code>{{NOME_</code> + <code>CONTRATANTE}}</code>).
-        </div>
-      `;
-      setDiag(false, diagHtml);
-
-      setProgress(84, 'Gerando arquivo…');
-      const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-
-      setProgress(95, 'Iniciando download…');
-      const urlBlob = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = urlBlob;
-      a.download = `${company}_${docName}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      const manual = el('#manual-link');
-      const box = el('#fallback-link');
-      manual.href = urlBlob;
-      manual.download = `${company}_${docName}.pdf`;
-      box.classList.remove('hidden');
-
-      setProgress(100, 'Concluído!');
-      fireConfetti();
-      toastOK();
-      setTimeout(() => { showProgress(false); box.classList.add('hidden'); URL.revokeObjectURL(urlBlob); }, 1600);
+      doc.setData(plainData);
+      try {
+        doc.render();
+      } catch (e) {
+        console.error(e);
+        throw e;
+      }
+      const out = doc.getZip().generate({ type: 'blob' });
+      return out;
     }
 
-    // ===== Ação principal =====
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      const manual = el('#manual-link'); const box = el('#fallback-link');
+      manual.href = url; manual.download = filename; box.classList.remove('hidden');
+      setTimeout(() => { URL.revokeObjectURL(url); box.classList.add('hidden'); }, 2000);
+    }
+
+    async function generateOneDocx(company, docName, data) {
+      setProgress(5, 'Baixando template…');
+      const url = `templates/${company}/${docName}.docx`;
+      const ab = await fetchArrayBuffer(url);
+
+      setProgress(40, 'Renderizando DOCX…');
+      let blob;
+      try {
+        blob = renderDocx(ab, data);
+      } catch (e) {
+        const msg = (e && e.properties && e.properties.errors)
+          ? e.properties.errors.map(err => err.properties.explanation).join('\n')
+          : (e.message || String(e));
+        setDiag(false, `<div class="text-red-700"><b>Erro ao renderizar:</b><br><pre class="whitespace-pre-wrap">${msg}</pre></div>`);
+        throw e;
+      }
+
+      setProgress(85, 'Gerando arquivo…');
+      downloadBlob(blob, `${company}_${docName}.docx`);
+      setProgress(100, 'Concluído!');
+    }
+
+    // ===== Fluxo principal =====
     el('#btn-generate').addEventListener('click', async () => {
       if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
 
-      const data = collectData();
-      const chosen = DOCS[currentCompany].filter((name) => el('#doc-' + name)?.checked);
-      if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
+      showProgress(true); setDiag(true);
+      try {
+        const data = await collectData();
+        const chosen = DOCS[currentCompany].filter((name) => el('#doc-' + name)?.checked);
+        if (!chosen.length) { alert('Selecione pelo menos um documento.'); showProgress(false); return; }
 
-      for (const docName of chosen) {
-        try { await generateOnePDF(currentCompany, docName, data); }
-        catch (e) { console.error(e); }
+        // Diagnóstico: mostra as chaves que iremos enviar ao motor
+        const diag = `
+          <div><b>Chaves enviadas para renderização:</b></div>
+          <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>${k}</code></li>`).join('')}</ul>
+        `;
+        setDiag(false, diag);
+
+        for (let i = 0; i < chosen.length; i++) {
+          setProgress(Math.round( (i / chosen.length) * 100 ), `Processando ${chosen[i]}…`);
+          await generateOneDocx(currentCompany, chosen[i], data);
+        }
+
+        fireConfetti();
+        toastOK();
+      } catch (e) {
+        console.error(e);
+        alert('Falha na geração: ' + (e.message || e));
+      } finally {
+        setTimeout(() => showProgress(false), 1200);
       }
     });
+
   </script>
 </body>
 </html>
