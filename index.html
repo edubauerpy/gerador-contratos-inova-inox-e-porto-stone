@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos — DOCX (compat templates {{CHAVE}})</title>
+  <title>Gerador de Contratos — PDF (templates DOCX com {{CHAVE}})</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -11,6 +11,13 @@
   <!-- PizZip para abrir/zipar DOCX -->
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
+
+  <!-- docx-preview (renderiza DOCX -> HTML no browser) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.css">
+  <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.min.js"></script>
+
+  <!-- html2pdf (HTML -> PDF) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
@@ -20,9 +27,8 @@
 
   <style>
     .progress-striped {
-      background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%,
-        transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%,
-        rgba(255,255,255,.25) 75%, transparent 75%, transparent);
+      background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%,
+        rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%, transparent);
       background-size: 1rem 1rem;
       animation: progress 1s linear infinite;
     }
@@ -35,13 +41,17 @@
     .acc-item{border-radius:1rem;border:1px solid rgb(226 232 240);overflow:hidden}
     .acc-header{width:100%;text-align:left;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between}
     .acc-body{padding:.75rem 1rem 1rem;border-top:1px dashed rgb(226 232 240)}
+
+    /* Palco invisível para renderizar HTML antes de gerar o PDF (A4 ~ 794px @96dpi) */
+    #pdf-stage { width: 794px; background: #fff; padding: 24px; }
+    #pdf-stage.hidden { display: none; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
   <div class="max-w-6xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos</h1>
-      <div class="text-sm text-gray-500">Mantém templates com {{CHAVE}}</div>
+      <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (PDF)</h1>
+      <div class="text-sm text-gray-500">Templates DOCX com {{CHAVE}}</div>
     </header>
 
     <!-- Empresas -->
@@ -117,7 +127,7 @@
           </div>
 
           <div class="flex items-center justify-end gap-3 mt-6">
-            <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar DOCX</button>
+            <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar PDF</button>
           </div>
         </div>
       </div>
@@ -130,7 +140,7 @@
     </section>
 
     <footer class="text-center text-xs text-gray-400 mt-10">
-      Mantém seus DOCX com {{CHAVE}}. Sem dependência de módulo de imagem.
+      Templates DOCX com {{CHAVE}} → exporta PDF no navegador.
     </footer>
   </div>
 
@@ -149,7 +159,7 @@
       </div>
       <div class="text-right text-sm mt-2"><span id="progress-num">0</span>%</div>
       <div id="fallback-link" class="hidden mt-4 text-center">
-        <a id="manual-link" class="text-black underline font-medium" href="#" download>Se não baixou, clique aqui para baixar</a>
+        <a id="manual-link" class="text-black underline font-medium" href="#" download>Se não baixou, clique aqui (fallback DOCX)</a>
       </div>
       <div id="diag" class="mt-4 hidden">
         <details class="text-xs text-gray-600">
@@ -163,9 +173,12 @@
   <!-- Toast -->
   <div id="toast" class="fixed left-1/2 -translate-x-1/2 top-6 hidden z-[60]">
     <div class="px-4 py-2 bg-white shadow-lg rounded-xl border flex items-center gap-2">
-      <span>✅ Documento gerado!</span>
+      <span>✅ PDF gerado!</span>
     </div>
   </div>
+
+  <!-- Palco invisível para renderização do DOCX->HTML antes do PDF -->
+  <div id="pdf-stage" class="hidden"></div>
 
   <script>
     // ===== Helpers numéricos/BRL =====
@@ -236,7 +249,6 @@
         centavos = (t || 'zero') + (cent === 1 ? ' centavo' : ' centavos');
       }
 
-      // 🔧 CORRIGIDO: faltava o '+'
       return centavos ? (reais + ' e ' + centavos) : reais;
     }
 
@@ -253,7 +265,7 @@
       { key: 'ENDERECO_CONTRATANTE', label: 'Endereço' },
       { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
-    ];
+    };
 
     const FIELDS_BY_DOC = {
       InovaInox: {
@@ -625,12 +637,35 @@
       return zip;
     }
 
-    function downloadBlob(blob, filename) {
+    // ===== Conversão DOCX->PDF =====
+    async function docxBlobToPdf(blob, filenamePdf) {
+      const stage = document.getElementById('pdf-stage');
+      stage.innerHTML = '';
+      stage.classList.remove('hidden');
+
+      // Renderiza o DOCX em HTML
+      await window.docx.renderAsync(blob, stage, null, {
+        ignoreWidth: false, ignoreHeight: false, className: 'docx', inWrapper: true
+      });
+
+      // Gera PDF a partir do HTML renderizado
+      const opt = {
+        margin:       [10, 10, 10, 10], // mm
+        filename:     filenamePdf,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      await html2pdf().set(opt).from(stage).save();
+
+      stage.classList.add('hidden');
+    }
+
+    function downloadBlobFallbackDOCX(blob, filename) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = filename; a.rel = 'noopener';
       document.body.appendChild(a); a.click(); a.remove();
-
       const manual = el('#manual-link'); const box = el('#fallback-link');
       if (manual && box) {
         manual.href = url; manual.download = filename; box.classList.remove('hidden');
@@ -659,7 +694,6 @@
         data[key] = val;
       });
 
-      // Calculados finais
       const vProdutos = parseBRL(data['VALOR_PRODUTOS_INSTALACAO'] || '');
       const vDesc = parseBRL(data['VALOR_DESCONTO'] || '');
       const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
@@ -714,7 +748,7 @@
       d.classList.toggle('hidden', !show);
     }
 
-    // ===== Geração DOCX =====
+    // ===== Geração (DOCX em memória → PDF) =====
     el('#btn-generate').addEventListener('click', async () => {
       if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
       const chosen = (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked);
@@ -724,6 +758,7 @@
       try {
         const data = collectDataObject();
 
+        // Diag
         const diag = `
           <div><b>Chaves (texto) → valor:</b></div>
           <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('')}</ul>
@@ -732,6 +767,7 @@
         el('#diag-content').innerHTML = diag;
         el('#diag').classList.remove('hidden');
 
+        // Imagens
         const images = [];
         const files = el('#foto-input').files || [];
         for (const f of files) {
@@ -741,7 +777,7 @@
 
         for (let i = 0; i < chosen.length; i++) {
           setProgress(Math.round((i / chosen.length) * 100), `Processando ${chosen[i]}…`);
-          await generateOneDocx(currentCompany, chosen[i], data, images);
+          await generateOnePdf(currentCompany, chosen[i], data, images);
         }
 
         confetti({ particleCount: 120, spread: 60, origin: { y: 0.7 }});
@@ -754,7 +790,7 @@
       }
     });
 
-    async function generateOneDocx(company, docName, data, images) {
+    async function generateOnePdf(company, docName, data, images) {
       setProgress(5, 'Baixando template…');
       const url = `templates/${company}/${docName}.docx`;
       const ab = await fetchArrayBuffer(url);
@@ -768,11 +804,17 @@
       setProgress(75, 'Anexando imagens (final)…');
       if (images && images.length) zip = appendImagesToDocument(zip, images);
 
-      setProgress(90, 'Compactando DOCX…');
-      const out = zip.generate({ type: 'blob' });
+      setProgress(90, 'Gerando PDF…');
+      const docxBlob = zip.generate({ type: 'blob' }); // DOCX em memória
+      try {
+        await docxBlobToPdf(docxBlob, `${company}_${docName}.pdf`);
+      } catch (err) {
+        console.error('Falha na conversão para PDF; fazendo fallback para DOCX', err);
+        downloadBlobFallbackDOCX(docxBlob, `${company}_${docName}.docx`);
+        throw err; // para aparecer no alerta e indicar que houve fallback
+      }
 
       setProgress(100, 'Concluído!');
-      downloadBlob(out, `${company}_${docName}.docx`);
     }
 
     // Campos personalizados (UI)
