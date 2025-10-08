@@ -188,7 +188,16 @@
     ];
     const FIELDS_BY_DOC = {
       InovaInox: {
-        Contrato: [],
+        // Adicionadas as chaves faltantes específicas do Contrato
+        Contrato: [
+          { key: 'VALOR_PRODUTOS_INSTALACAO', label: 'Valor de produtos + instalação' },
+          { key: 'VALOR_DESCONTO', label: 'Desconto acordado' },
+          { key: 'VALOR_TOTAL_POR_EXTENSO', label: 'Valor total por extenso' },
+          { key: 'NÚMERO_PARCELAS', label: 'Número de parcelas' },
+          { key: 'VALOR_PARCELAS', label: 'Valor das parcelas' },
+          { key: 'VALOR_PARCELAS_POR_EXTENSO', label: 'Valor das parcelas (por extenso)' },
+          { key: 'FORMA_PAGAMENTO_PARCELAS', label: 'Forma de pagamento das parcelas' },
+        ],
         Ordem_de_Servico: [
           { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
           { key: 'CIDADE', label: 'Cidade' },
@@ -363,7 +372,7 @@
         <w:r>
           <w:drawing>
             <wp:inline distT="0" distB="0" distL="0" distR="0"
-                xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                xmlns:wp="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
                 xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
                 xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
               <wp:extent cx="16000000" cy="9000000"/>
