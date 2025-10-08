@@ -3,98 +3,383 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos – Inova Inox & Porto Stone</title>
+  <title>Gerador de Contratos — Inova Inox & Porto Stone</title>
+  <!-- Tailwind via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { inox: '#0f172a', marble: '#d4af37' },
+          boxShadow: { card: '0 8px 30px rgba(0,0,0,0.06)' },
+          borderRadius: { '2xl': '1.25rem' }
+        }
+      }, darkMode: 'class'
+    }
+  </script>
+  <!-- Docxtemplater stack -->
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.44.0/build/docxtemplater.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater-image-module-free@1.3.2/build/dist/dimt.js"></script>
+  <!-- jsPDF (PDF simples opcional) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-900 antialiased min-h-screen flex items-center justify-center">
-  <div class="w-full max-w-3xl p-6 bg-white shadow-xl rounded-2xl">
-    <h1 class="text-2xl font-semibold mb-4 text-center">Gerador de Contratos</h1>
-    <p class="text-center mb-6 text-gray-600">Escolha a empresa abaixo:</p>
+<body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
+  <div class="max-w-5xl mx-auto p-6">
+    <header class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Gerador de Contratos</h1>
+      <div class="text-sm text-gray-500">Inova Inox & Porto Stone</div>
+    </header>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <button onclick="selectCompany('InovaInox')" class="p-6 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700">Inova Inox</button>
-      <button onclick="selectCompany('PortoStone')" class="p-6 rounded-xl bg-yellow-500 text-white font-medium hover:bg-yellow-600">Porto Stone</button>
-    </div>
+    <!-- Step 1: Escolha da empresa -->
+    <section id="step-company" class="grid md:grid-cols-2 gap-4">
+      <button data-company="InovaInox" class="company-card group rounded-2xl bg-white shadow-card border border-gray-100 p-6 text-left hover:shadow-lg transition">
+        <div class="flex items-center gap-3">
+          <div class="h-11 w-11 rounded-xl bg-inox/90 text-white grid place-items-center text-lg">II</div>
+          <div>
+            <div class="font-semibold text-lg">Inova Inox</div>
+            <div class="text-gray-500 text-sm">Contrato, OS e Capa</div>
+          </div>
+        </div>
+        <div class="mt-4 text-sm text-gray-600">Clique para configurar os campos e gerar.</div>
+      </button>
 
-    <div id="formSection" class="hidden mt-8">
-      <h2 class="text-lg font-semibold mb-4 text-center" id="companyLabel"></h2>
+      <button data-company="PortoStone" class="company-card group rounded-2xl bg-white shadow-card border border-gray-100 p-6 text-left hover:shadow-lg transition">
+        <div class="flex items-center gap-3">
+          <div class="h-11 w-11 rounded-xl bg-marble text-white grid place-items-center text-lg">PS</div>
+          <div>
+            <div class="font-semibold text-lg">Porto Stone</div>
+            <div class="text-gray-500 text-sm">Contrato e OS</div>
+          </div>
+        </div>
+        <div class="mt-4 text-sm text-gray-600">Clique para configurar os campos e gerar.</div>
+      </button>
+    </section>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        <input id="NOME_CONTRATANTE" placeholder="Nome do Cliente" class="border rounded-lg p-2 w-full" />
-        <input id="CPF_CONTRATANTE" placeholder="CPF/CNPJ" class="border rounded-lg p-2 w-full" />
-        <input id="ENDERECO_CONTRATANTE" placeholder="Endereço" class="border rounded-lg p-2 w-full" />
-        <input id="TELEFONE_CONTRATANTE" placeholder="Telefone" class="border rounded-lg p-2 w-full" />
-        <input id="TIPO_DE_PROJETO" placeholder="Tipo de Projeto" class="border rounded-lg p-2 w-full" />
-        <input id="VALOR_TOTAL" placeholder="Valor Total" class="border rounded-lg p-2 w-full" />
+    <!-- Step 2: Configuração por empresa -->
+    <section id="step-config" class="hidden mt-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <button id="btn-back" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">← Voltar</button>
+          <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
+        </div>
+        <div class="text-xs text-gray-500">Templates: <code class="bg-gray-100 px-1 rounded">templates/&lt;Empresa&gt;/&lt;Documento&gt;.docx</code></div>
       </div>
 
-      <div class="mb-4">
-        <p class="font-medium mb-2">Escolha os documentos:</p>
-        <div id="documentOptions" class="space-y-2"></div>
+      <!-- Documentos -->
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="rounded-2xl bg-white shadow-card border border-gray-100 p-5">
+          <div class="font-medium mb-3">Escolha os documentos</div>
+          <div id="doc-options" class="space-y-2 text-sm"></div>
+          <div class="mt-4">
+            <div class="font-medium mb-1">Saída</div>
+            <label class="flex items-center gap-2 mb-1">
+              <input type="checkbox" id="out-docx" class="accent-inox" checked /> <span>Word (.docx)</span>
+            </label>
+            <label class="flex items-center gap-2">
+              <input type="checkbox" id="out-pdf" class="accent-inox" /> <span>PDF (simples)</span>
+            </label>
+            <p class="text-xs text-gray-500 mt-2">PDF é uma versão simples do conteúdo; não replica o layout do DOCX.</p>
+          </div>
+        </div>
+
+        <!-- Campos -->
+        <div class="rounded-2xl bg-white shadow-card border border-gray-100 p-5 md:col-span-2">
+          <div class="font-medium mb-3">Campos do documento</div>
+          <div id="fields" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+
+          <!-- Campos personalizados (key/value) -->
+          <div class="mt-4">
+            <div class="flex items-center justify-between">
+              <div class="font-medium">Campos personalizados</div>
+              <button id="add-custom" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">+ Adicionar</button>
+            </div>
+            <div id="custom-fields" class="mt-2 space-y-2"></div>
+            <p class="text-xs text-gray-500 mt-1">Use exatamente o nome da chave do template (ex.: <code>{{ORDEM_SERVICO}}</code> → <b>ORDEM_SERVICO</b>).</p>
+          </div>
+        </div>
       </div>
 
-      <button onclick="generateDocs()" class="w-full py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Gerar Documentos</button>
-    </div>
+      <!-- Imagens -->
+      <div class="rounded-2xl bg-white shadow-card border border-gray-100 p-5 mt-4">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="font-medium">Imagens para inserir</div>
+            <p class="text-xs text-gray-500">Arraste/solte, clique para selecionar ou cole (Ctrl/Cmd+V). Serão mapeadas como <code>FOTO1</code>, <code>FOTO2</code>, ...</p>
+          </div>
+          <button id="btn-clear-imgs" class="text-sm px-3 py-1.5 rounded-lg border hover:bg-gray-50">Limpar imagens</button>
+        </div>
+        <div id="dropzone" class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center cursor-pointer bg-gray-50 hover:bg-gray-100">
+          <input id="file-input" type="file" accept="image/*" multiple class="hidden" />
+          <div class="text-gray-500">Solte ou clique para escolher imagens</div>
+        </div>
+        <div id="thumbs" class="mt-3 grid grid-cols-2 md:grid-cols-6 gap-3"></div>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 mt-6">
+        <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-inox text-white hover:opacity-95">Gerar documento(s)</button>
+      </div>
+    </section>
+
+    <footer class="text-center text-xs text-gray-400 mt-10">coloque seus templates em <code>templates/InovaInox/</code> e <code>templates/PortoStone/</code> (sem a barra inicial)</footer>
   </div>
 
   <script>
-    const docs = {
-      InovaInox: ["Contrato", "Ordem_de_Servico", "Capa"],
-      PortoStone: ["Contrato", "Ordem_de_Servico"]
+    // —— Documentos por empresa
+    const DOCS = {
+      InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'],
+      PortoStone: ['Contrato', 'Ordem_de_Servico']
     };
 
+    // —— Campos por documento (somados aos comuns)
+    const COMMON_FIELDS = [
+      { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
+      { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
+      { key: 'ENDERECO_CONTRATANTE', label: 'Endereço' },
+      { key: 'TELEFONE_CONTRATANTE', label: 'Telefone' },
+      { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
+      { key: 'VALOR_TOTAL', label: 'Valor total' },
+      { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' }
+    ];
+
+    const FIELDS_BY_DOC = {
+      InovaInox: {
+        Contrato: [], // já usa todos os comuns
+        Ordem_de_Servico: [
+          { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
+          { key: 'CIDADE', label: 'Cidade' },
+          { key: 'VENDEDOR', label: 'Vendedor' }
+        ],
+        Capa: [
+          { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
+          { key: 'ENDERECO_CONTRATANTE_PROJETO', label: 'Endereço do projeto (obra)' }
+        ]
+      },
+      PortoStone: {
+        Contrato: [], // comuns
+        Ordem_de_Servico: [
+          { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }
+        ]
+      }
+    };
+
+    // —— Estado
     let currentCompany = null;
+    let images = []; // { name, dataUrl, width, height }
 
-    function selectCompany(name) {
-      currentCompany = name;
-      document.getElementById("companyLabel").innerText = name;
-      const section = document.getElementById("formSection");
-      section.classList.remove("hidden");
+    const el = sel => document.querySelector(sel);
+    const els = sel => Array.from(document.querySelectorAll(sel));
 
-      const opts = document.getElementById("documentOptions");
-      opts.innerHTML = "";
-      docs[name].forEach(doc => {
-        opts.innerHTML += `
-          <label class='flex items-center gap-2'>
-            <input type='checkbox' class='accent-blue-600' id='${doc}' checked>
-            <span>${doc.replace(/_/g, " ")}</span>
-          </label>`;
+    // Navegação
+    els('.company-card').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentCompany = btn.dataset.company;
+        el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
+        renderDocOptions();
+        renderFields(); // inicialmente pelos comuns
+        el('#step-company').classList.add('hidden');
+        el('#step-config').classList.remove('hidden');
+      });
+    });
+
+    el('#btn-back').addEventListener('click', () => {
+      el('#step-config').classList.add('hidden');
+      el('#step-company').classList.remove('hidden');
+    });
+
+    function renderDocOptions() {
+      const wrap = el('#doc-options');
+      wrap.innerHTML = '';
+      DOCS[currentCompany].forEach(name => {
+        const id = 'doc-' + name;
+        const label = name.replace(/_/g, ' ');
+        wrap.insertAdjacentHTML('beforeend', `
+          <label class="flex items-center gap-2">
+            <input type="checkbox" class="accent-inox doc-check" id="${id}" checked />
+            <span>${label}</span>
+          </label>
+        `);
+      });
+      // toda vez que marcar/desmarcar, recalcula campos
+      els('.doc-check').forEach(c => c.addEventListener('change', renderFields));
+    }
+
+    function getRequiredFields() {
+      // começa com os comuns
+      const set = new Map(COMMON_FIELDS.map(f => [f.key, f]));
+      // soma campos de cada doc selecionado
+      DOCS[currentCompany].forEach(name => {
+        if (el('#doc-' + name)?.checked) {
+          (FIELDS_BY_DOC[currentCompany]?.[name] || []).forEach(f => set.set(f.key, f));
+        }
+      });
+      return Array.from(set.values());
+    }
+
+    function fieldInput({ key, label, type = 'text', placeholder = '' }) {
+      const id = 'f-' + key;
+      const labelEl = `<label class="text-sm font-medium">${label}</label>`;
+      if (type === 'textarea') {
+        return `
+          <div class="flex flex-col gap-1">${labelEl}
+            <textarea id="${id}" data-key="${key}" rows="4" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"></textarea>
+          </div>`;
+      }
+      return `
+        <div class="flex flex-col gap-1">${labelEl}
+          <input id="${id}" data-key="${key}" placeholder="${placeholder}" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2" />
+        </div>`;
+    }
+
+    function renderFields() {
+      const wrap = el('#fields');
+      wrap.innerHTML = '';
+      getRequiredFields().forEach(f => wrap.insertAdjacentHTML('beforeend', fieldInput(f)));
+    }
+
+    // Campos personalizados
+    el('#add-custom').addEventListener('click', () => {
+      el('#custom-fields').insertAdjacentHTML('beforeend', `
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <input placeholder="Chave (ex.: OBSERVACOES)" data-type="custom-key" class="col-span-2 rounded-xl border border-gray-300 px-3 py-2" />
+          <input placeholder="Valor" data-type="custom-val" class="md:col-span-3 rounded-xl border border-gray-300 px-3 py-2" />
+        </div>`);
+    });
+
+    // Imagens: drop/paste
+    const dropzone = el('#dropzone');
+    const fileInput = el('#file-input');
+    const thumbs = el('#thumbs');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+    ;['dragenter','dragover'].forEach(ev => dropzone.addEventListener(ev, e=>{e.preventDefault(); dropzone.classList.add('bg-gray-100');}));
+    ;['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e=>{e.preventDefault(); dropzone.classList.remove('bg-gray-100');}));
+    dropzone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+    window.addEventListener('paste', async (e) => {
+      const items = e.clipboardData?.items || [];
+      for (const it of items) if (it.type.startsWith('image/')) await readImageFile(it.getAsFile());
+      renderThumbs();
+    });
+
+    el('#btn-clear-imgs').addEventListener('click', () => { images = []; renderThumbs(); });
+
+    function handleFiles(fileList) { Promise.all(Array.from(fileList).map(readImageFile)).then(renderThumbs); }
+    function readImageFile(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => { images.push({ name: file.name, dataUrl: reader.result, width: img.width, height: img.height }); resolve(); };
+          img.src = reader.result;
+        }; reader.readAsDataURL(file);
       });
     }
-
-    function getField(id) {
-      return document.getElementById(id).value || "";
+    function renderThumbs() {
+      thumbs.innerHTML = images.map((im, idx) => `
+        <div class="relative">
+          <img src="${im.dataUrl}" class="w-full h-24 object-cover rounded-lg border" alt="img${idx+1}" />
+          <div class="absolute bottom-1 left-1 text-[11px] bg-black/70 text-white px-1.5 py-0.5 rounded">FOTO${idx+1}</div>
+        </div>`).join('');
     }
 
-    async function generateDocs() {
-      const data = {
-        NOME_CONTRATANTE: getField("NOME_CONTRATANTE"),
-        CPF_CONTRATANTE: getField("CPF_CONTRATANTE"),
-        ENDERECO_CONTRATANTE: getField("ENDERECO_CONTRATANTE"),
-        TELEFONE_CONTRATANTE: getField("TELEFONE_CONTRATANTE"),
-        TIPO_DE_PROJETO: getField("TIPO_DE_PROJETO"),
-        VALOR_TOTAL: getField("VALOR_TOTAL"),
-        DATA_EMISSAO_CONTRATO: new Date().toLocaleDateString("pt-BR")
-      };
+    // Utils
+    function loadBinary(url) {
+      return fetch(url).then(r => { if(!r.ok) throw new Error('Não encontrei '+url); return r.arrayBuffer(); }).then(buf => new Uint8Array(buf));
+    }
 
-      const selected = docs[currentCompany].filter(d => document.getElementById(d)?.checked);
-      for (const docName of selected) {
-        const url = `templates/${currentCompany}/${docName}.docx`;
-        const content = await fetch(url).then(r => r.arrayBuffer());
-        const zip = new PizZip(content);
-        const doc = new window.docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-        doc.setData(data);
-        doc.render();
-        const blob = doc.getZip().generate({ type: "blob" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `${currentCompany}_${docName}_Preenchido.docx`;
-        a.click();
+    function collectData() {
+      const data = {};
+      els('#fields [data-key]').forEach(inp => {
+        const key = inp.dataset.key;
+        let val = inp.value || '';
+        if ((key === 'DATA_EMISSAO_CONTRATO') && !val) val = new Date().toLocaleDateString('pt-BR');
+        data[key] = val;
+      });
+      // Custom
+      const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
+      ks.forEach((kEl, i) => {
+        const key = (kEl.value || '').trim();
+        const val = el('#custom-fields').querySelectorAll('[data-type="custom-val"]')[i].value || '';
+        if (key) data[key] = val;
+      });
+      // Imagens FOTO1..FOTOn
+      images.forEach((im, i) => { data['FOTO'+(i+1)] = im.dataUrl; });
+      return data;
+    }
+
+    // DOCX com imagens
+    async function generateOneDocx(company, docName, data) {
+      const url = `templates/${company}/${docName}.docx`;
+      const content = await loadBinary(url);
+      const zip = new PizZip(content);
+
+      const imageModule = new window.dimt.ImageModule({
+        getImage: (tagValue) => {
+          if (!tagValue) return null;
+          const base64 = tagValue.split(',')[1];
+          const bin = atob(base64);
+          const u8 = new Uint8Array(bin.length);
+          for (let i=0;i<bin.length;i++) u8[i] = bin.charCodeAt(i);
+          return u8.buffer;
+        },
+        getSize: () => [100, 75] // mm — ajuste se quiser
+      });
+
+      const doc = new window.docxtemplater(zip, { modules: [imageModule], paragraphLoop: true, linebreaks: true });
+      doc.setData(data);
+      doc.render();
+      const out = doc.getZip().generate({ type: 'blob' });
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(out);
+      a.download = `${company}_${docName}_Preenchido.docx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // PDF simples
+    function generateSimplePDF(company, docName, data) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      let y = 40;
+      doc.setFont('helvetica','bold'); doc.setFontSize(14);
+      doc.text(`${company} — ${docName}`, 40, y); y += 20;
+      doc.setFont('helvetica',''); doc.setFontSize(11);
+      Object.entries(data).forEach(([k,v]) => {
+        const lines = doc.splitTextToSize(`${k}: ${String(v).replace(/\n/g,' ')}`, 515);
+        lines.forEach(ln => { y += 14; if (y > 780) { doc.addPage(); y = 40; } doc.text(ln, 40, y); });
+      });
+      if (images.length) {
+        y += 24; doc.setFont('helvetica','bold'); doc.text('Imagens:', 40, y); doc.setFont('helvetica',''); y += 10;
+        images.forEach((im) => {
+          const w = 180, h = 120;
+          if (y + h > 800) { doc.addPage(); y = 40; }
+          try { doc.addImage(im.dataUrl, 'JPEG', 40, y, w, h); } catch (e) { try { doc.addImage(im.dataUrl, 'PNG', 40, y, w, h); } catch(_){} }
+          y += h + 10;
+        });
       }
+      doc.save(`${company}_${docName}.pdf`);
     }
+
+    // Generate
+    el('#btn-generate').addEventListener('click', async () => {
+      const outDocx = el('#out-docx').checked;
+      const outPdf  = el('#out-pdf').checked;
+      const data = collectData();
+
+      const chosen = DOCS[currentCompany].filter(name => el('#doc-'+name)?.checked);
+      if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
+      if (!outDocx && !outPdf) { alert('Selecione pelo menos um tipo de saída (Word/PDF).'); return; }
+
+      for (const docName of chosen) {
+        if (outDocx) { try { await generateOneDocx(currentCompany, docName, data); } catch (e) { alert('Erro ao gerar DOCX: '+e.message); console.error(e); } }
+        if (outPdf) { try { generateSimplePDF(currentCompany, docName, data); }  catch (e) { alert('Erro ao gerar PDF: '+e.message); console.error(e); } }
+      }
+    });
   </script>
 </body>
 </html>
