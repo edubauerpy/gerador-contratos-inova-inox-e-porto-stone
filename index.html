@@ -24,8 +24,8 @@
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.42.5/build/docxtemplater.js"></script>
 
-  <!-- Image module - build de browser (expõe window.docxtemplaterImageModule) -->
-  <script src="https://unpkg.com/docxtemplater-image-module-free@1.2.3/browser.js"></script>
+  <!-- Image module - build de browser compatível -->
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater-image-module-free@1.1.1/build/browser.js"></script>
 
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
@@ -349,6 +349,7 @@
       const { ImageModule } = window.docxtemplaterImageModule || {};
       if (typeof ImageModule !== 'function') {
         throw new Error('ImageModule não disponível. Verifique a tag <script> do image-module.');
+        // Dica: confirme que a URL está acessível e vem depois de docxtemplater.js
       }
       return new ImageModule({
         getImage(tagValue) {
@@ -363,7 +364,7 @@
           }
           return null;
         },
-        getSize() { return [600, 350]; } // px (o módulo converte)
+        getSize() { return [600, 350]; } // px
       });
     }
 
@@ -395,8 +396,7 @@
         console.error(e);
         throw e;
       }
-      const out = doc.getZip().generate({ type: 'blob' });
-      return out;
+      return doc.getZip().generate({ type: 'blob' });
     }
 
     function downloadBlob(blob, filename) {
