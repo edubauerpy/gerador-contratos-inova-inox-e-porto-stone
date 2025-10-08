@@ -14,6 +14,9 @@
   <!-- Confetti (efeito) -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
+  <!-- Lucide Icons (para usar <i data-lucide="...">) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
   <style>
     .progress-striped {
       background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%,
@@ -32,32 +35,14 @@
       <div class="text-sm text-gray-500">Mantém templates com {{CHAVE}}</div>
     </header>
 
-<!-- Empresa (SVGs estáveis: building-2 + drill / building-2 + hammer) -->
+<!-- Empresa (Lucide: building-2 + drill / building-2 + hammer) -->
 <section class="grid md:grid-cols-2 gap-4">
   <!-- Inova Inox -->
   <button data-company="InovaInox" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
     <div class="flex items-center gap-3">
       <div class="flex items-center gap-2 text-gray-700">
-        <!-- building-2 (outline) -->
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6"
-             fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 22V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v15"/>
-          <path d="M6 22H4"/>
-          <path d="M20 22h-2"/>
-          <path d="M10 6v2M14 6v2M10 10v2M14 10v2M10 14v2M14 14v2M10 18v2M14 18v2"/>
-        </svg>
-        <!-- drill (outline simplificado) -->
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6"
-             fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 8h6a3 3 0 0 1 0 6h-3"/>
-          <path d="M5 8v6"/>
-          <path d="M3 10h2M3 12h2"/>
-          <path d="M10 8v6M14 8v6"/>
-          <path d="M7 16v4"/>
-          <path d="M17 11h3"/>
-        </svg>
+        <i data-lucide="building-2" class="w-6 h-6"></i>
+        <i data-lucide="drill" class="w-6 h-6"></i>
       </div>
       <div>
         <div class="font-semibold text-lg">Inova Inox</div>
@@ -70,24 +55,8 @@
   <button data-company="PortoStone" class="company-card rounded-2xl bg-white shadow border p-6 text-left">
     <div class="flex items-center gap-3">
       <div class="flex items-center gap-2 text-gray-700">
-        <!-- building-2 (outline) -->
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6"
-             fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 22V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v15"/>
-          <path d="M6 22H4"/>
-          <path d="M20 22h-2"/>
-          <path d="M10 6v2M14 6v2M10 10v2M14 10v2M10 14v2M14 14v2M10 18v2M14 18v2"/>
-        </svg>
-        <!-- hammer (outline simplificado) -->
-        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-6 w-6"
-             fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 4l2 2l-6 6"/>
-          <path d="M20 4l-2 2"/>
-          <path d="M3 21l7-7"/>
-          <path d="M10 14l4 4"/>
-        </svg>
+        <i data-lucide="building-2" class="w-6 h-6"></i>
+        <i data-lucide="hammer" class="w-6 h-6"></i>
       </div>
       <div>
         <div class="font-semibold text-lg">Porto Stone</div>
@@ -245,6 +214,12 @@
 
     // ===== Navegação =====
     let currentCompany = null;
+
+    // Inicializa Lucide quando o DOM estiver pronto
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+    });
+
     els('.company-card').forEach((btn) => {
       btn.addEventListener('click', () => {
         currentCompany = btn.dataset.company;
