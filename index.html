@@ -69,7 +69,7 @@
         </div>
       </button>
 
-      <!-- Porto Stone (mantido, mas você pode ignorar) -->
+      <!-- Porto Stone (mantido, mas pode ignorar) -->
       <button data-company="PortoStone"
               class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
         <div class="flex items-center gap-3">
@@ -258,7 +258,7 @@
       PortoStone: ['Contrato', 'Ordem_de_Servico'],
     };
 
-    // Campos comuns
+    // Campos comuns (não-financeiros)
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -266,24 +266,13 @@
       { key: 'ENDERECO_CONTRATANTE', label: 'Endereço' },
       { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
-
-      // Financeiro compartilhado (para facilitar)
-      { key: 'VALOR_PRODUTOS_INSTALACAO', label: 'Valor de produtos + instalação', type: 'money' },
-      { key: 'VALOR_DESCONTO', label: 'Desconto acordado', type: 'money' },
-
-      // Calculados automaticamente (somente leitura na UI)
-      { key: 'VALOR_TOTAL', label: 'Valor total (auto)', type: 'money-readonly' },
-      { key: 'VALOR_TOTAL_POR_EXTENSO', label: 'Valor total por extenso (auto)', type: 'textarea-readonly' },
     ];
 
-    // Campos específicos por documento
+    // Campos específicos por documento (não-financeiros aqui)
     const FIELDS_BY_DOC = {
       InovaInox: {
         Contrato: [
-          { key: 'NÚMERO_PARCELAS', label: 'Número de parcelas' },
-          { key: 'VALOR_PARCELAS', label: 'Valor das parcelas', type: 'money' },
-          { key: 'VALOR_PARCELAS_POR_EXTENSO', label: 'Valor das parcelas (por extenso)', type: 'textarea' },
-          { key: 'FORMA_PAGAMENTO_PARCELAS', label: 'Forma de pagamento das parcelas' },
+          { key: 'NÚMERO_PARCELAS', label: 'Número de parcelas' }, // usado na seção Financeiro (UI), mas mantido aqui para referência
         ],
         Ordem_de_Servico: [
           { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
@@ -301,10 +290,21 @@
       },
     };
 
+    // Chaves da seção Financeiro (com a ordem e comportamento definidos)
+    const FIN_KEYS = {
+      VALOR_PRODUTOS_INSTALACAO: { label: 'Valor Instalação e Produtos', type: 'money' },
+      VALOR_DESCONTO: { label: 'Desconto', type: 'money' },
+      VALOR_TOTAL: { label: 'Valor Total (auto)', type: 'money-readonly' },
+      VALOR_TOTAL_POR_EXTENSO: { label: 'Valor Total por extenso (auto)', type: 'textarea-readonly' },
+      VALOR_ENTRADA: { label: 'Valor Entrada', type: 'money' }, // ativado por checkbox
+      METODO_PAGAMENTO_ENTRADA: { label: 'Método Pagamento Entrada', type: 'select', options: ['PIX','Cartão','Dinheiro','Boleto','Transferência'] },
+      NÚMERO_PARCELAS: { label: 'Número de Parcelas', type: 'number' },
+      VALOR_PARCELAS: { label: 'Valor das parcelas (auto)', type: 'money-readonly' },
+    };
+
     const IMAGE_KEY_HINT = /(DESENHO|FOTO)/i;
     const el  = (s) => document.querySelector(s);
     const els = (s) => Array.from(document.querySelectorAll(s));
-    const wrapKey = (k) => `{{${k}}}`;
 
     // Inicializa Lucide
     document.addEventListener('DOMContentLoaded', () => {
@@ -334,7 +334,7 @@
 
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
-      DOCS[currentCompany].forEach((name) => {
+      (DOCS[currentCompany] || []).forEach((name) => {
         const isChecked = name === 'Contrato' ? 'checked' : '';
         wrap.insertAdjacentHTML('beforeend', `
           <label class="flex items-center gap-2">
@@ -342,9 +342,7 @@
             <span>${name.replace(/_/g,' ')}</span>
           </label>`);
       });
-      els('.doc-check').forEach((c) => c.addEventListener('change', () => {
-        renderAccordion();
-      }));
+      els('.doc-check').forEach((c) => c.addEventListener('change', renderAccordion));
     }
 
     function getActiveDocs() {
@@ -354,70 +352,93 @@
     function getAllFieldsGrouped() {
       const active = getActiveDocs();
 
-      // Agrupamento base
       const groups = {
         identificacao: { title: 'Identificação do cliente', fields: [] },
         endereco: { title: 'Endereço', fields: [] },
         projeto: { title: 'Projeto', fields: [] },
-        financeiro: { title: 'Financeiro', fields: [] },
+        financeiro: { title: 'Financeiro', fields: [] }, // será renderizado com layout customizado
         comercial: { title: 'Comercial / Operacional (OS)', fields: [] },
-        personalizados: { title: 'Campos personalizados', fields: [] }, // UI separada
       };
 
-      // Distribui COMMON_FIELDS
+      // COMMON
       COMMON_FIELDS.forEach(f => {
         if (['NOME_CONTRATANTE','CPF_CONTRATANTE','TELEFONE_CONTRATANTE'].includes(f.key)) groups.identificacao.fields.push(f);
         else if (['ENDERECO_CONTRATANTE'].includes(f.key)) groups.endereco.fields.push(f);
         else if (['TIPO_DE_PROJETO','DATA_EMISSAO_CONTRATO'].includes(f.key)) groups.projeto.fields.push(f);
-        else if (['VALOR_PRODUTOS_INSTALACAO','VALOR_DESCONTO','VALOR_TOTAL','VALOR_TOTAL_POR_EXTENSO'].includes(f.key)) groups.financeiro.fields.push(f);
       });
 
-      // Campos específicos conforme documentos ativos
+      // DOC-specific (não-financeiros)
       active.forEach(doc => {
         (FIELDS_BY_DOC[currentCompany]?.[doc] || []).forEach(f => {
           if (doc === 'Capa' && f.key === 'ENDERECO_CONTRATANTE_PROJETO') groups.endereco.fields.push(f);
           else if (['ORDEM_PRODUCAO'].includes(f.key) || f.key === 'ENDERECO_CONTRATANTE_PROJETO') groups.projeto.fields.push(f);
           else if (doc === 'Ordem_de_Servico') groups.comercial.fields.push(f);
-          else if (doc === 'Contrato') groups.financeiro.fields.push(f);
+          else if (doc === 'Contrato' && f.key === 'NÚMERO_PARCELAS') {
+            // NÚMERO_PARCELAS será exibido dentro do Financeiro custom
+          }
         });
       });
 
-      // Remove duplicados por key
+      // Financeiro só aparece se Contrato estiver ativo
+      if (active.includes('Contrato')) {
+        groups.financeiro.fields = [
+          { key: 'VALOR_PRODUTOS_INSTALACAO', ...FIN_KEYS.VALOR_PRODUTOS_INSTALACAO },
+          { key: 'VALOR_DESCONTO', ...FIN_KEYS.VALOR_DESCONTO },
+          { key: 'VALOR_TOTAL', ...FIN_KEYS.VALOR_TOTAL },
+          { key: 'VALOR_TOTAL_POR_EXTENSO', ...FIN_KEYS.VALOR_TOTAL_POR_EXTENSO },
+          { key: 'VALOR_ENTRADA', ...FIN_KEYS.VALOR_ENTRADA },
+          { key: 'METODO_PAGAMENTO_ENTRADA', ...FIN_KEYS.METODO_PAGAMENTO_ENTRADA },
+          { key: 'NÚMERO_PARCELAS', ...FIN_KEYS.NÚMERO_PARCELAS },
+          { key: 'VALOR_PARCELAS', ...FIN_KEYS.VALOR_PARCELAS },
+        ];
+      }
+
+      // Remove duplicados
       for (const g of Object.values(groups)) {
         const seen = new Set();
         g.fields = g.fields.filter(f => !seen.has(f.key) && seen.add(f.key));
       }
 
-      // Condicional: só mostra Financeiro quando Contrato ativo
-      if (!active.includes('Contrato')) groups.financeiro.fields = groups.financeiro.fields
-        .filter(f => !['VALOR_PRODUTOS_INSTALACAO','VALOR_DESCONTO','VALOR_TOTAL','VALOR_TOTAL_POR_EXTENSO','NÚMERO_PARCELAS','VALOR_PARCELAS','VALOR_PARCELAS_POR_EXTENSO','FORMA_PAGAMENTO_PARCELAS'].includes(f.key));
-
-      // Condicional: só mostra Comercial quando OS ativo
-      if (!active.includes('Ordem_de_Servico')) groups.comercial.fields = [];
-
       return groups;
     }
 
-    function fieldInput({ key, label, type='text', placeholder='' }) {
+    function fieldInput({ key, label, type='text', placeholder='', options=[] }) {
       const id = 'f-' + key;
-      const commonLabel = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
+      const baseLabel = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
 
       if (type === 'textarea' || type === 'textarea-readonly') {
         return `<div class="flex flex-col gap-1">
-          ${commonLabel}
+          ${baseLabel}
           <textarea id="${id}" data-key="${key}" rows="2" class="mt-1 w-full rounded-xl border px-3 py-2 ${type==='textarea-readonly'?'bg-gray-50 text-gray-700':''}" ${type==='textarea-readonly'?'readonly':''}></textarea>
+        </div>`;
+      }
+
+      if (type === 'select') {
+        return `<div class="flex flex-col gap-1">
+          ${baseLabel}
+          <select id="${id}" data-key="${key}" class="mt-1 w-full rounded-xl border px-3 py-2">
+            <option value="">Selecione…</option>
+            ${options.map(o=>`<option value="${o}">${o}</option>`).join('')}
+          </select>
+        </div>`;
+      }
+
+      if (type === 'number') {
+        return `<div class="flex flex-col gap-1">
+          ${baseLabel}
+          <input id="${id}" data-key="${key}" type="number" min="0" step="1" class="mt-1 w-full rounded-xl border px-3 py-2" />
         </div>`;
       }
 
       if (type === 'money' || type === 'money-readonly') {
         return `<div class="flex flex-col gap-1">
-          ${commonLabel}
+          ${baseLabel}
           <input id="${id}" data-key="${key}" inputmode="decimal" class="mt-1 w-full rounded-xl border px-3 py-2 ${type==='money-readonly'?'bg-gray-50 text-gray-700':''}" ${type==='money-readonly'?'readonly':''} />
         </div>`;
       }
 
       return `<div class="flex flex-col gap-1">
-        ${commonLabel}
+        ${baseLabel}
         <input id="${id}" data-key="${key}" placeholder="${placeholder}" class="mt-1 w-full rounded-xl border px-3 py-2" />
       </div>`;
     }
@@ -426,10 +447,11 @@
       const wrap = el('#accordion'); wrap.innerHTML = '';
       const groups = getAllFieldsGrouped();
       const order = ['identificacao','endereco','projeto','financeiro','comercial'];
-      order.forEach((key, idx) => {
-        const g = groups[key];
+
+      order.forEach((gk, idx) => {
+        const g = groups[gk];
         if (!g.fields.length) return;
-        const bodyId = `acc-body-${key}`;
+        const bodyId = `acc-body-${gk}`;
         const count = g.fields.length;
         wrap.insertAdjacentHTML('beforeend', `
           <div class="acc-item">
@@ -438,15 +460,18 @@
               <i data-lucide="chevron-down" class="w-5 h-5"></i>
             </button>
             <div id="${bodyId}" class="acc-body ${idx ? 'hidden' : ''}">
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                ${g.fields.map(f => fieldInput(f)).join('')}
-              </div>
+              ${gk === 'financeiro'
+                ? renderFinanceCustom(g.fields)
+                : `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    ${g.fields.map(f => fieldInput(f)).join('')}
+                   </div>`
+              }
             </div>
           </div>
         `);
       });
 
-      // Accordion toggle
+      // Toggle
       els('.acc-header').forEach(h => {
         h.addEventListener('click', () => {
           const id = h.dataset.target;
@@ -454,33 +479,99 @@
         });
       });
 
-      // Bind money formatters e cálculo automático
-      bindMoneyHandlers();
-      updateCalculatedFields();
+      // Liga handlers
+      bindFinanceHandlers();
+      bindGenericHandlers();
+      updateCalculatedFields(); // inicial
       refreshPreview();
       installFilter();
     }
 
-    function bindMoneyHandlers() {
-      // Formatar on-blur e recálculo on-input
-      ['VALOR_PRODUTOS_INSTALACAO','VALOR_DESCONTO','VALOR_PARCELAS'].forEach(k => {
-        const inp = el('#f-' + k);
-        if (!inp) return;
-        inp.addEventListener('input', () => {
-          // não formatamos em tempo real para não atrapalhar digitação — só recalculamos
-          updateCalculatedFields();
-          refreshPreview();
-        });
-        inp.addEventListener('blur', () => {
-          const n = parseBRL(inp.value);
-          inp.value = n ? formatBRL(n) : '';
-          updateCalculatedFields();
-          refreshPreview();
-        });
+    function renderFinanceCustom(fields) {
+      // Row helpers
+      const input = (key) => fieldInput(fields.find(f=>f.key===key));
+      // Linha total + extenso lado a lado (2 colunas)
+      const totalRow = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          ${input('VALOR_TOTAL')}
+          ${input('VALOR_TOTAL_POR_EXTENSO')}
+        </div>`;
+
+      // Checkbox para ativar entrada + campo dinheiro
+      const entradaRow = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+          <div class="flex items-center gap-3">
+            <input id="chk-VALOR_ENTRADA" type="checkbox" class="w-4 h-4 accent-black" />
+            <div class="flex-1">${input('VALOR_ENTRADA').replace('input id="f-VALOR_ENTRADA"', 'input id="f-VALOR_ENTRADA" disabled')}</div>
+          </div>
+          <div id="wrap-METODO_PAGAMENTO_ENTRADA" class="hidden">
+            ${input('METODO_PAGAMENTO_ENTRADA')}
+          </div>
+        </div>`;
+
+      // Número de parcelas + valor parcelas
+      const parcelasRow = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          ${input('NÚMERO_PARCELAS')}
+          ${input('VALOR_PARCELAS')}
+        </div>`;
+
+      return `
+        <div class="space-y-3">
+          ${input('VALOR_PRODUTOS_INSTALACAO')}
+          ${input('VALOR_DESCONTO')}
+          ${totalRow}
+          ${entradaRow}
+          ${parcelasRow}
+        </div>
+      `;
+    }
+
+    function bindGenericHandlers() {
+      // date default e preview
+      const date = el('#f-DATA_EMISSAO_CONTRATO');
+      if (date && !date.value) date.value = new Date().toLocaleDateString('pt-BR');
+
+      // filtro atualiza preview
+      els('[data-key]').forEach(inp => {
+        inp.addEventListener('input', refreshPreview);
+        inp.addEventListener('blur', refreshPreview);
       });
     }
 
+    function bindFinanceHandlers() {
+      // Produtos, desconto: formatar no blur e recalcular
+      ['VALOR_PRODUTOS_INSTALACAO','VALOR_DESCONTO','VALOR_ENTRADA'].forEach(k => {
+        const inp = el('#f-' + k);
+        if (!inp) return;
+        inp.addEventListener('input', () => { updateCalculatedFields(); refreshPreview(); });
+        inp.addEventListener('blur', () => { const n = parseBRL(inp.value); inp.value = n ? formatBRL(n) : ''; updateCalculatedFields(); refreshPreview(); });
+      });
+
+      // Checkbox entrada
+      const chk = el('#chk-VALOR_ENTRADA');
+      const inpEnt = el('#f-VALOR_ENTRADA');
+      const wrapMetodo = el('#wrap-METODO_PAGAMENTO_ENTRADA');
+      if (chk) {
+        chk.addEventListener('change', () => {
+          const on = chk.checked;
+          if (inpEnt) { inpEnt.disabled = !on; if (!on) inpEnt.value = ''; }
+          if (wrapMetodo) wrapMetodo.classList.toggle('hidden', !on);
+          updateCalculatedFields();
+          refreshPreview();
+        });
+      }
+
+      // Número de parcelas
+      const npar = el('#f-NÚMERO_PARCELAS');
+      if (npar) {
+        npar.addEventListener('input', () => { updateCalculatedFields(); refreshPreview(); });
+        npar.addEventListener('blur', () => { updateCalculatedFields(); refreshPreview(); });
+      }
+    }
+
     function updateCalculatedFields() {
+      // Total
       const vProdutos = parseBRL(el('#f-VALOR_PRODUTOS_INSTALACAO')?.value || '');
       const vDesc = parseBRL(el('#f-VALOR_DESCONTO')?.value || '');
       const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
@@ -490,6 +581,18 @@
 
       const extensoEl = el('#f-VALOR_TOTAL_POR_EXTENSO');
       if (extensoEl) extensoEl.value = total ? numeroPorExtensoBRL(total) : '';
+
+      // Entrada habilitada?
+      const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
+      const vEntrada = entradaOn ? parseBRL(el('#f-VALOR_ENTRADA')?.value || '') : 0;
+
+      // Parcelas
+      const nParcelas = parseInt(el('#f-NÚMERO_PARCELAS')?.value || '0', 10);
+      const base = Math.max(0, total - (vEntrada || 0));
+      const vParcela = (nParcelas > 0) ? (base / nParcelas) : 0;
+
+      const parcelasEl = el('#f-VALOR_PARCELAS');
+      if (parcelasEl) parcelasEl.value = (nParcelas > 0 && base >= 0) ? formatBRL(vParcela) : '';
     }
 
     function installFilter() {
@@ -499,7 +602,7 @@
       fi.addEventListener('input', () => {
         const q = (fi.value || '').trim().toLowerCase();
         els('[data-key]').forEach(n => {
-          const key = n.dataset.key.toLowerCase();
+          const key = n.dataset.key?.toLowerCase?.() || '';
           const label = (n.closest('div')?.querySelector('label')?.textContent || '').toLowerCase();
           const show = !q || key.includes(q) || label.includes(q);
           n.closest('.flex.flex-col')?.classList.toggle('hidden', !show);
@@ -507,46 +610,7 @@
       });
     }
 
-    // ===== Custom fields =====
-    el('#add-custom').addEventListener('click', () => {
-      el('#custom-fields').insertAdjacentHTML('beforeend', `
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
-          <input placeholder="Chave (ex.: {{NOME_CONTRATANTE}})" data-type="custom-key" class="col-span-2 rounded-xl border px-3 py-2" />
-          <input placeholder="Valor" data-type="custom-val" class="md:col-span-3 rounded-xl border px-3 py-2" />
-        </div>`);
-    });
-
-    // ===== Progress / Toast / Diag =====
-    function showProgress(show = true) {
-      const m = el('#progress-modal');
-      if (show) { m.classList.remove('hidden'); m.style.display = 'flex'; }
-      else { m.classList.add('hidden'); m.style.display = 'none'; }
-    }
-    function setProgress(pct, msg = '') {
-      el('#progress-bar').style.width = `${pct}%`;
-      el('#progress-num').textContent = Math.max(0, Math.min(100, Math.round(pct)));
-      if (msg) el('#progress-msg').textContent = msg;
-    }
-    function fireConfetti() {
-      const duration = 1200;
-      const end = Date.now() + duration;
-      (function frame() {
-        confetti({ particleCount: 7, angle: 60, startVelocity: 50, spread: 55, origin: { x: 0 } });
-        confetti({ particleCount: 7, angle: 120, startVelocity: 50, spread: 55, origin: { x: 1 } });
-        if (Date.now() < end) requestAnimationFrame(frame);
-      })();
-    }
-    function toastOK() {
-      const t = el('#toast');
-      t.classList.remove('hidden');
-      setTimeout(() => t.classList.add('hidden'), 1800);
-    }
-    function setDiag(hidden, html = '') {
-      el('#diag-content').innerHTML = html || '';
-      el('#diag').classList.toggle('hidden', hidden);
-    }
-
-    // ===== Arquivo / DOCX =====
+    // ===== Imagens & arquivo =====
     async function fileToArrayBuffer(file) {
       return new Promise((resolve, reject) => {
         const fr = new FileReader();
@@ -590,7 +654,7 @@
         <w:r>
           <w:drawing>
             <wp:inline distT="0" distB="0" distL="0" distR="0"
-                xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                xmlns:wp="http://schemas.openxmlformats.org/wordprocessingDrawing"
                 xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
                 xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
               <wp:extent cx="16000000" cy="9000000"/>
@@ -651,17 +715,40 @@
       setTimeout(() => { URL.revokeObjectURL(url); box.classList.add('hidden'); }, 2000);
     }
 
-    // ===== Coleta e preview =====
+    // ===== Coleta, preview e geração =====
     function collectDataObject() {
       const data = {};
-      els('#accordion [data-key]').forEach((inp) => {
+      // pega todos os inputs com data-key (inclusive os do Financeiro custom)
+      els('[data-key]').forEach((inp) => {
         const key = inp.dataset.key;
         let val = (inp.value || '').toString();
         if (key === 'DATA_EMISSAO_CONTRATO' && !val) {
           val = new Date().toLocaleDateString('pt-BR');
         }
+        // se a entrada estiver desativada, não enviar valor
+        if (key === 'VALOR_ENTRADA') {
+          const on = !!el('#chk-VALOR_ENTRADA')?.checked;
+          val = on ? val : '';
+        }
+        if (key === 'METODO_PAGAMENTO_ENTRADA') {
+          const on = !!el('#chk-VALOR_ENTRADA')?.checked;
+          val = on ? val : '';
+        }
         data[key] = val;
       });
+
+      // Calculados (garantia final)
+      const vProdutos = parseBRL(data['VALOR_PRODUTOS_INSTALACAO'] || '');
+      const vDesc = parseBRL(data['VALOR_DESCONTO'] || '');
+      const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
+      data['VALOR_TOTAL'] = total ? formatBRL(total) : '';
+      data['VALOR_TOTAL_POR_EXTENSO'] = total ? numeroPorExtensoBRL(total) : '';
+
+      const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
+      const vEntrada = entradaOn ? parseBRL(data['VALOR_ENTRADA'] || '') : 0;
+      const nParcelas = parseInt(data['NÚMERO_PARCELAS'] || '0', 10);
+      const base = Math.max(0, total - (vEntrada || 0));
+      data['VALOR_PARCELAS'] = (nParcelas > 0 && base >= 0) ? formatBRL(base / nParcelas) : '';
 
       // Campos personalizados
       const ks = el('#custom-fields').querySelectorAll('[data-type="custom-key"]');
@@ -670,13 +757,6 @@
         const val = el('#custom-fields').querySelectorAll('[data-type="custom-val"]')[i].value || '';
         if (rawKey) data[rawKey] = val;
       });
-
-      // Garantir que os calculados estão coerentes (caso usuário não tenha interagido)
-      const vProdutos = parseBRL(data['VALOR_PRODUTOS_INSTALACAO'] || '');
-      const vDesc = parseBRL(data['VALOR_DESCONTO'] || '');
-      const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
-      data['VALOR_TOTAL'] = total ? formatBRL(total) : '';
-      data['VALOR_TOTAL_POR_EXTENSO'] = total ? numeroPorExtensoBRL(total) : '';
 
       return data;
     }
@@ -691,10 +771,43 @@
       });
     }
 
-    // ===== Fluxo principal =====
+    function bindMoneyFormatOnBlur(id) {
+      const inp = el(id);
+      if (!inp || inp._blurBound) return;
+      inp._blurBound = true;
+      inp.addEventListener('blur', () => {
+        const n = parseBRL(inp.value);
+        inp.value = n ? formatBRL(n) : '';
+      });
+    }
+
+    // Calcula e atualiza todos os dependentes
+    function updateCalculatedFields() {
+      const vProdutos = parseBRL(el('#f-VALOR_PRODUTOS_INSTALACAO')?.value || '');
+      const vDesc = parseBRL(el('#f-VALOR_DESCONTO')?.value || '');
+      const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
+
+      const totalEl = el('#f-VALOR_TOTAL');
+      if (totalEl) totalEl.value = total ? formatBRL(total) : '';
+
+      const extensoEl = el('#f-VALOR_TOTAL_POR_EXTENSO');
+      if (extensoEl) extensoEl.value = total ? numeroPorExtensoBRL(total) : '';
+
+      const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
+      const vEntrada = entradaOn ? parseBRL(el('#f-VALOR_ENTRADA')?.value || '') : 0;
+
+      const nParcelas = parseInt(el('#f-NÚMERO_PARCELAS')?.value || '0', 10);
+      const base = Math.max(0, total - (vEntrada || 0));
+      const vParcela = (nParcelas > 0) ? (base / nParcelas) : 0;
+
+      const parcelasEl = el('#f-VALOR_PARCELAS');
+      if (parcelasEl) parcelasEl.value = (nParcelas > 0 && base >= 0) ? formatBRL(vParcela) : '';
+    }
+
+    // ===== Geração DOCX =====
     el('#btn-generate').addEventListener('click', async () => {
       if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
-      const chosen = getActiveDocs();
+      const chosen = (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked);
       if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
 
       showProgress(true); setDiag(true);
@@ -707,7 +820,8 @@
           <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('')}</ul>
           <div class="mt-2 text-xs text-gray-500">Placeholders que combinem <code>/(DESENHO|FOTO)/i</code> serão removidos e as imagens anexadas ao final.</div>
         `;
-        setDiag(false, diag);
+        el('#diag-content').innerHTML = diag;
+        el('#diag').classList.remove('hidden');
 
         // Imagens
         const images = [];
@@ -722,13 +836,13 @@
           await generateOneDocx(currentCompany, chosen[i], data, images);
         }
 
-        fireConfetti();
-        toastOK();
+        confetti({ particleCount: 120, spread: 60, origin: { y: 0.7 }});
+        const t = el('#toast'); t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'), 1800);
       } catch (e) {
         console.error(e);
         alert('Falha na geração: ' + (e.message || e));
       } finally {
-        setTimeout(() => showProgress(false), 1200);
+        setTimeout(() => { el('#progress-modal').classList.add('hidden'); el('#progress-modal').style.display='none'; }, 1200);
       }
     });
 
@@ -741,7 +855,7 @@
       let zip = new PizZip(ab);
 
       setProgress(55, 'Substituindo placeholders…');
-      zip = replacePlaceholdersInZip(zip, data, IMAGE_KEY_HINT);
+      zip = replacePlaceholdersInZip(zip, data, /(DESENHO|FOTO)/i);
 
       setProgress(75, 'Anexando imagens (final)…');
       if (images && images.length) zip = appendImagesToDocument(zip, images);
@@ -750,10 +864,50 @@
       const out = zip.generate({ type: 'blob' });
 
       setProgress(100, 'Concluído!');
-      downloadBlob(out, `${company}_${docName}.docx`);
+      const urlBlob = URL.createObjectURL(out);
+      const a = document.createElement('a'); a.href = urlBlob; a.download = `${company}_${docName}.docx`; document.body.appendChild(a); a.click(); a.remove();
+      const manual = el('#manual-link'); const box = el('#fallback-link');
+      manual.href = urlBlob; manual.download = `${company}_${docName}.docx`; box.classList.remove('hidden');
+      setTimeout(() => { URL.revokeObjectURL(urlBlob); box.classList.add('hidden'); }, 2000);
     }
 
-    // Inicialização
+    // ===== Normalização e substituição =====
+    function normalize_xml(xml) {
+      return xml.replace(/<w:t[^>]*>\s+/g, '<w:t>').replace(/\s+<\/w:t>/g, '</w:t>').replace(/>\s+</g, '><');
+    }
+
+    function replacePlaceholdersInZip(zip, replacements, removeImageKeysRegex) {
+      const files = zip.file(/word\/.*\.xml/);
+      files.forEach(f => {
+        let xml = f.asText();
+        xml = normalize_xml(xml);
+        Object.entries(replacements).forEach(([k, v]) => {
+          const pattern = new RegExp(String.raw`\{\{\s*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`, 'g');
+          xml = xml.replace(pattern, v);
+        });
+        xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
+        zip.file(f.name, xml);
+      });
+      return zip;
+    }
+
+    // ===== Helpers visuais =====
+    function installFilter() {
+      const fi = el('#filter-input');
+      if (!fi || fi._bound) return;
+      fi._bound = true;
+      fi.addEventListener('input', () => {
+        const q = (fi.value || '').trim().toLowerCase();
+        els('[data-key]').forEach(n => {
+          const key = n.dataset.key?.toLowerCase?.() || '';
+          const label = (n.closest('div')?.querySelector('label')?.textContent || '').toLowerCase();
+          const show = !q || key.includes(q) || label.includes(q);
+          n.closest('.flex.flex-col')?.classList.toggle('hidden', !show);
+        });
+      });
+    }
+
+    // Inicialização de tela
     (function init() {
       els('.company-card').forEach(b=>b.addEventListener('click', ()=> {
         el('#step-config').classList.remove('hidden');
