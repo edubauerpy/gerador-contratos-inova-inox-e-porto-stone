@@ -12,6 +12,9 @@
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
 
+  <!-- JSZip (OBRIGATÓRIO para docx-preview) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
   <!-- docx-preview (renderiza DOCX -> HTML no browser) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.css">
   <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.min.js"></script>
@@ -624,7 +627,7 @@
       const data = collectDataObject();
       Object.keys(data).sort().forEach(k => {
         const v = data[k] || '';
-        prev.insertAdjacentHTML('beforeend', `<div><code>{{${k}}}</code> → <span class="text-gray-700">${(v || '<i>vazio</i>')}</span></div>`);
+        prev.insertAdjacentHTML('beforeend', `<div><code>{{${'${k}'}}}</code> → <span class="text-gray-700">${'${(v || '<i>vazio</i>)'}'}</span></div>`);
       });
     }
     function showProgress(show) {
@@ -654,7 +657,7 @@
         const data = collectDataObject();
         const diag = `
           <div><b>Chaves (texto) → valor:</b></div>
-          <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('')}</ul>
+          <ul class="list-disc pl-5">${'${Object.keys(data).map(k=>`<li><code>{{${'${k}'}}}</code> → ${'${data[k] || '<i>vazio</i>'}'}</li>`).join('')}'}</ul>
           <div class="mt-2 text-xs text-gray-500">Placeholders que combinem <code>/(DESENHO|FOTO)/i</code> serão removidos e as imagens anexadas ao final.</div>
         `;
         el('#diag-content').innerHTML = diag;
@@ -666,7 +669,7 @@
           images.push(new Uint8Array(ab));
         }
         for (let i = 0; i < chosen.length; i++) {
-          setProgress(Math.round((i / chosen.length) * 100), `Processando ${chosen[i]}…`);
+          setProgress(Math.round((i / chosen.length) * 100), `Processando ${'${chosen[i]}'}…`);
           await generateOnePdf(currentCompany, chosen[i], data, images);
         }
         confetti({ particleCount: 120, spread: 60, origin: { y: 0.7 }});
@@ -680,7 +683,7 @@
     });
     async function generateOnePdf(company, docName, data, images) {
       setProgress(5, 'Baixando template…');
-      const url = `templates/${company}/${docName}.docx`;
+      const url = `templates/${'${company}'}/${'${docName}'}.docx`;
       const ab = await fetchArrayBuffer(url);
       setProgress(25, 'Abrindo arquivo…');
       if (!window.PizZip) throw new Error('PizZip não carregado');
@@ -692,7 +695,7 @@
       setProgress(90, 'Gerando PDF…');
       const docxBlob = zip.generate({ type: 'blob' }); // DOCX em memória
       try {
-        await docxBlobToPdf(docxBlob, `${company}_${docName}.pdf`);
+        await docxBlobToPdf(docxBlob, `${'${company}'}_${'${docName}'}.pdf`);
       } catch (err) {
         console.error('Falha na conversão para PDF', err);
         alert('Falha ao gerar PDF. Verifique o template, os campos ou tente novamente.');
@@ -710,24 +713,31 @@
       el('#custom-fields').appendChild(box);
     });
     document.addEventListener('DOMContentLoaded', () => {
-      function waitForLucide(cb) {
-        if (window.lucide && window.lucide.createIcons) cb();
-        else setTimeout(() => waitForLucide(cb), 50);
-      }
-      waitForLucide(() => {
-        hydrateIcons();
-        document.addEventListener('click', (ev) => {
-          const btn = ev.target.closest('.company-card');
-          if (!btn) return;
-          const company = btn.dataset.company;
-          if (!company) return;
-          currentCompany = company;
-          selectCompanyCard(btn);
-          el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
-          el('#step-config').classList.remove('hidden');
-          renderDocOptions();
-          renderAccordion();
-        });
+  // 1) Core listeners independentes do Lucide
+  document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.company-card');
+    if (!btn) return;
+    const company = btn.dataset.company;
+    if (!company) return;
+    currentCompany = company;
+    selectCompanyCard(btn);
+    el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
+    el('#step-config').classList.remove('hidden');
+    renderDocOptions();
+    renderAccordion();
+  });
+  const back = el('#btn-back');
+  if (back) back.addEventListener('click', () => location.reload());
+
+  // 2) Hidratamos os ícones assim que o Lucide estiver pronto (sem travar o resto)
+  (function waitLucide(){
+    if (window.lucide && window.lucide.createIcons) {
+      hydrateIcons();
+    } else {
+      setTimeout(waitLucide, 50);
+    }
+  })();
+});
         el('#btn-back').addEventListener('click', () => location.reload());
       });
     });
