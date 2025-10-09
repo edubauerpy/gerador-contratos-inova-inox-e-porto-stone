@@ -25,28 +25,23 @@
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide Icons (UMD) — defer para garantir window.lucide -->
+  <!-- Lucide Icons (UMD) -->
   <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <style>
-    .progress-striped {
-      background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%,
-        rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%, transparent);
-      background-size: 1rem 1rem;
-      animation: progress 1s linear infinite;
+    .progress-striped{
+      background-image:linear-gradient(45deg,rgba(255,255,255,.25) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.25) 50%,rgba(255,255,255,.25) 75%,transparent 75%,transparent);
+      background-size:1rem 1rem;animation:progress 1s linear infinite
     }
-    @keyframes progress { from{background-position:1rem 0} to{background-position:0 0} }
-
-    .card-hover { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
-    .card-hover:hover { transform: translateY(-1px) scale(1.01); box-shadow: 0 10px 24px rgba(0,0,0,.1); border-color: rgb(30 41 59 / .2); }
-    .selected-card { transform: translateY(-2px) scale(1.012); box-shadow: 0 22px 44px -14px rgba(0,0,0,.28), 0 6px 14px rgba(0,0,0,.06); border-color: rgb(15 23 42 / .35); }
-
+    @keyframes progress{from{background-position:1rem 0}to{background-position:0 0}}
+    .card-hover{transition:transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease}
+    .card-hover:hover{transform:translateY(-1px) scale(1.01);box-shadow:0 10px 24px rgba(0,0,0,.1);border-color:rgb(30 41 59 / .2)}
+    .selected-card{transform:translateY(-2px) scale(1.012);box-shadow:0 22px 44px -14px rgba(0,0,0,.28), 0 6px 14px rgba(0,0,0,.06);border-color:rgb(15 23 42 / .35)}
     .acc-item{border-radius:1rem;border:1px solid rgb(226 232 240);overflow:hidden}
     .acc-header{width:100%;text-align:left;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between}
     .acc-body{padding:.75rem 1rem 1rem;border-top:1px dashed rgb(226 232 240)}
-
-    #pdf-stage { width: 794px; background: #fff; padding: 24px; }
-    #pdf-stage.hidden { display: none; }
+    #pdf-stage{width:794px;background:#fff;padding:24px}
+    #pdf-stage.hidden{display:none}
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
@@ -56,6 +51,7 @@
       <div class="text-sm text-gray-500">Templates DOCX com {{CHAVE}}</div>
     </header>
 
+    <!-- Seleção de empresa -->
     <section id="company-grid" class="grid md:grid-cols-2 gap-4">
       <button type="button" data-company="InovaInox" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
         <div class="flex items-center gap-3">
@@ -84,6 +80,7 @@
       </button>
     </section>
 
+    <!-- Passo de configuração -->
     <section id="step-config" class="hidden mt-6">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
@@ -98,20 +95,24 @@
           <div id="doc-options" class="space-y-2 text-sm"></div>
           <p class="text-xs text-gray-500 mt-3">
             Placeholders de texto: <b>{{CHAVE}}</b>.<br>
-            Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) são removidos do corpo e imagens anexadas no final.
+            Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) são removidos do corpo e imagens anexadas ao final.
           </p>
         </div>
+
         <div class="rounded-2xl bg-white shadow border p-5 lg:col-span-2">
           <div class="flex items-center justify-between mb-3">
             <div class="font-medium">Campos</div>
             <input id="filter-input" placeholder="Filtrar campo/CHAVE..." class="rounded-xl border px-3 py-2 text-sm w-60">
           </div>
+
           <div id="accordion" class="space-y-3"></div>
+
           <div class="mt-5">
             <div class="font-medium mb-1">Imagens (opcional)</div>
             <input id="foto-input" type="file" accept="image/*" multiple class="block w-full text-sm border rounded-xl px-3 py-2" />
             <p class="text-xs text-gray-500 mt-1">Serão inseridas numa nova página ao final.</p>
           </div>
+
           <div class="mt-5">
             <div class="flex items-center justify-between">
               <div class="font-medium">Campos personalizados</div>
@@ -119,11 +120,13 @@
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
           </div>
+
           <div class="flex items-center justify-end gap-3 mt-6">
             <button id="btn-generate" type="button" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar PDF</button>
           </div>
         </div>
       </div>
+
       <div class="mt-6 rounded-2xl bg-white shadow border p-5">
         <div class="font-medium">Prévia de substituições</div>
         <div id="preview" class="mt-2 text-sm grid md:grid-cols-2 gap-x-6 gap-y-1"></div>
@@ -173,13 +176,12 @@
     const els = (s) => Array.from(document.querySelectorAll(s));
 
     function hydrateIcons() {
-      // Garante hidratação segura do Lucide quando disponível
       if (window.lucide && typeof window.lucide.createIcons === 'function') {
         window.lucide.createIcons();
       }
     }
 
-    // Formatação BRL
+    // BRL
     const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
     const formatBRL = (n) => fmtBRL.format(isFinite(n) ? n : 0);
     const parseBRL = (s) => {
@@ -510,6 +512,16 @@
       return await resp.arrayBuffer();
     }
 
+    // Escapa valores para XML (evita quebrar <w:t>, txbxContent, etc.)
+    function xmlEscape(s='') {
+      return String(s)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&apos;');
+    }
+
     function appendImagesToDocument(zip, imagesU8) {
       if (!imagesU8.length) return zip;
       const mediaNames = imagesU8.map((u8, i) => `word/media/compat_img_${Date.now()}_${i}.png`);
@@ -563,23 +575,30 @@
       return zip;
     }
 
+    // Não colapsa agressivamente o XML (evita mexer em txbxContent/v: shapes)
     function normalize_xml(xml) {
       return xml
-        .replace(/<w:t[^>]*>\s+/g, '<w:t>')
-        .replace(/\s+<\/w:t>/g, '</w:t>')
-        .replace(/>\s+</g, '><');
+        .replace(/<w:t([^>]*)>\s+/g, '<w:t$1>')   // espaços à esquerda dentro de w:t
+        .replace(/\s+<\/w:t>/g, '</w:t>');        // espaços à direita dentro de w:t
     }
 
     function replacePlaceholdersInZip(zip, replacements, removeImageKeysRegex) {
-      const files = zip.file(/word\/.*\.xml/);
+      const files = zip.file(/word\/.*\.xml/); // document, headers, footers, etc.
       files.forEach(f => {
         let xml = f.asText();
         xml = normalize_xml(xml);
-        Object.entries(replacements).forEach(([k, v]) => {
-          const pattern = new RegExp(String.raw`\{\{\s*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`, 'g');
-          xml = xml.replace(pattern, v);
-        });
+
+        // 1) Remove chaves de imagem (em qualquer lugar) — sem quebrar XML
         xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
+
+        // 2) Substitui chaves de texto com ESCAPE de XML
+        for (const [rawK, rawV] of Object.entries(replacements)) {
+          const k = rawK.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+          const v = xmlEscape(rawV ?? '');
+          const pattern = new RegExp(String.raw`\{\{\s*${k}\s*\}\}`, 'g');
+          xml = xml.replace(pattern, v);
+        }
+
         zip.file(f.name, xml);
       });
       return zip;
@@ -599,18 +618,18 @@
       stage.innerHTML = '';
       stage.classList.remove('hidden');
       await window.docx.renderAsync(blob, stage, null, {
-        ignoreWidth: false, ignoreHeight: false, className: 'docx', inWrapper: true
+        ignoreWidth:false, ignoreHeight:false, className:'docx', inWrapper:true
       });
       if (!stage.innerHTML || stage.innerHTML.trim() === '') {
         alert('Falha ao renderizar o template DOCX. PDF não será gerado!');
         throw new Error("Falha ao renderizar DOCX em HTML");
       }
       const opt = {
-        margin: [10,10,10,10],
+        margin:[10,10,10,10],
         filename: filenamePdf,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        image:{ type:'jpeg', quality:0.98 },
+        html2canvas:{ scale:2, useCORS:true },
+        jsPDF:{ unit:'mm', format:'a4', orientation:'portrait' }
       };
       await html2pdf().set(opt).from(stage).save();
       stage.classList.add('hidden');
@@ -632,6 +651,7 @@
         }
         data[key] = val;
       });
+      // Calculados
       const vProdutos = parseBRL(data['VALOR_PRODUTOS_INSTALACAO'] || '');
       const vDesc = parseBRL(data['VALOR_DESCONTO'] || '');
       const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
@@ -643,7 +663,7 @@
       const base = Math.max(0, total - (vEntrada || 0));
       data['VALOR_PARCELAS'] = (nParcelas > 0 && base >= 0) ? formatBRL(base / nParcelas) : '';
 
-      // Campos personalizados
+      // Personalizados
       const ks = el('#custom-fields')?.querySelectorAll('[data-type="custom-key"]') || [];
       const vs = el('#custom-fields')?.querySelectorAll('[data-type="custom-val"]') || [];
       ks.forEach((kEl, i) => {
@@ -711,16 +731,15 @@
       setProgress(100, 'Concluído!');
     }
 
-    // ===== Inicialização única, sem duplicações =====
+    // ===== Inicialização =====
     document.addEventListener('DOMContentLoaded', () => {
-      // Hidrata ícones assim que o script UMD do Lucide estiver disponível
-      const lucideReady = () => !!(window.lucide && window.lucide.createIcons);
+      // Espera Lucide e hidrata SVGs
       (function waitLucide(){
-        if (lucideReady()) hydrateIcons();
+        if (window.lucide && window.lucide.createIcons) hydrateIcons();
         else setTimeout(waitLucide, 50);
       })();
 
-      // Seleção da empresa (corrigido)
+      // Seleção de empresa
       document.addEventListener('click', (ev) => {
         const btn = ev.target.closest('.company-card');
         if (!btn) return;
@@ -738,12 +757,10 @@
       });
 
       // Voltar
-      const back = el('#btn-back');
-      if (back) back.addEventListener('click', () => location.reload());
+      el('#btn-back')?.addEventListener('click', () => location.reload());
 
-      // Adicionar campo custom
-      const addCustom = el('#add-custom');
-      if (addCustom) addCustom.addEventListener('click', () => {
+      // Add custom field
+      el('#add-custom')?.addEventListener('click', () => {
         const box = document.createElement('div');
         box.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
         box.innerHTML = `
@@ -754,8 +771,7 @@
       });
 
       // Gerar PDF
-      const btnGenerate = el('#btn-generate');
-      if (btnGenerate) btnGenerate.addEventListener('click', async () => {
+      el('#btn-generate')?.addEventListener('click', async () => {
         if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
         const chosen = (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked);
         if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
