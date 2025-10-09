@@ -22,7 +22,7 @@
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide Icons (UMD) — defer para garantir que window.lucide exista antes do hydrate -->
+  <!-- Lucide Icons (UMD) — usar defer para garantir que window.lucide exista antes do hydrate -->
   <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <style>
@@ -42,7 +42,6 @@
     .acc-header{width:100%;text-align:left;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between}
     .acc-body{padding:.75rem 1rem 1rem;border-top:1px dashed rgb(226 232 240)}
 
-    /* Palco invisível para renderizar HTML antes de gerar o PDF (A4 ~ 794px @96dpi) */
     #pdf-stage { width: 794px; background: #fff; padding: 24px; }
     #pdf-stage.hidden { display: none; }
   </style>
@@ -53,7 +52,6 @@
       <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (PDF)</h1>
       <div class="text-sm text-gray-500">Templates DOCX com {{CHAVE}}</div>
     </header>
-
     <!-- Empresas -->
     <section id="company-grid" class="grid md:grid-cols-2 gap-4">
       <button type="button" data-company="InovaInox" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
@@ -68,7 +66,6 @@
           </div>
         </div>
       </button>
-
       <button type="button" data-company="PortoStone" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
         <div class="flex items-center gap-3 pointer-events-none">
           <div class="flex items-center gap-2 text-gray-700">
@@ -82,7 +79,6 @@
         </div>
       </button>
     </section>
-
     <!-- Config -->
     <section id="step-config" class="hidden mt-6">
       <div class="flex items-center justify-between mb-4">
@@ -91,7 +87,6 @@
           <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
         </div>
       </div>
-
       <div class="grid lg:grid-cols-3 gap-4">
         <!-- Documentos -->
         <div class="rounded-2xl bg-white shadow border p-5">
@@ -102,22 +97,18 @@
             Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) são removidos do corpo e imagens anexadas no final.
           </p>
         </div>
-
         <!-- Campos -->
         <div class="rounded-2xl bg-white shadow border p-5 lg:col-span-2">
           <div class="flex items-center justify-between mb-3">
             <div class="font-medium">Campos</div>
             <input id="filter-input" placeholder="Filtrar campo/CHAVE..." class="rounded-xl border px-3 py-2 text-sm w-60">
           </div>
-
           <div id="accordion" class="space-y-3"></div>
-
           <div class="mt-5">
             <div class="font-medium mb-1">Imagens (opcional)</div>
             <input id="foto-input" type="file" accept="image/*" multiple class="block w-full text-sm border rounded-xl px-3 py-2" />
             <p class="text-xs text-gray-500 mt-1">Serão inseridas numa nova página ao final.</p>
           </div>
-
           <div class="mt-5">
             <div class="flex items-center justify-between">
               <div class="font-medium">Campos personalizados</div>
@@ -125,25 +116,21 @@
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
           </div>
-
           <div class="flex items-center justify-end gap-3 mt-6">
             <button id="btn-generate" type="button" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar PDF</button>
           </div>
         </div>
       </div>
-
       <!-- Prévia -->
       <div class="mt-6 rounded-2xl bg-white shadow border p-5">
         <div class="font-medium">Prévia de substituições</div>
         <div id="preview" class="mt-2 text-sm grid md:grid-cols-2 gap-x-6 gap-y-1"></div>
       </div>
     </section>
-
     <footer class="text-center text-xs text-gray-400 mt-10">
       Templates DOCX com {{CHAVE}} → exporta PDF no navegador.
     </footer>
   </div>
-
   <!-- Modal de progresso -->
   <div id="progress-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
@@ -158,9 +145,6 @@
         <div id="progress-bar" class="h-full w-0 bg-black progress-striped"></div>
       </div>
       <div class="text-right text-sm mt-2"><span id="progress-num">0</span>%</div>
-      <div id="fallback-link" class="hidden mt-4 text-center">
-        <a id="manual-link" class="text-black underline font-medium" href="#" download>Se não baixou, clique aqui (fallback DOCX)</a>
-      </div>
       <div id="diag" class="mt-4 hidden">
         <details class="text-xs text-gray-600">
           <summary class="cursor-pointer font-medium">Diagnóstico</summary>
@@ -169,23 +153,18 @@
       </div>
     </div>
   </div>
-
   <!-- Toast -->
   <div id="toast" class="fixed left-1/2 -translate-x-1/2 top-6 hidden z-[60]">
     <div class="px-4 py-2 bg-white shadow-lg rounded-xl border flex items-center gap-2">
       <span>✅ PDF gerado!</span>
     </div>
   </div>
-
   <!-- Palco invisível para renderização do DOCX->HTML antes do PDF -->
   <div id="pdf-stage" class="hidden"></div>
-
   <script>
-    // ===== Helpers =====
+    // Helpers
     const el  = (s) => document.querySelector(s);
     const els = (s) => Array.from(document.querySelectorAll(s));
-
-    // Hidrata ícones Lucide quando o bundle estiver pronto
     function hydrateIcons() {
       if (window.lucide && typeof window.lucide.createIcons === 'function') {
         window.lucide.createIcons();
@@ -195,8 +174,6 @@
         }, 0);
       }
     }
-
-    // ===== Helpers numéricos/BRL =====
     const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
     const formatBRL = (n) => fmtBRL.format(isFinite(n) ? n : 0);
     const parseBRL = (s) => {
@@ -205,7 +182,6 @@
       const n = parseFloat(clean);
       return isNaN(n) ? 0 : n;
     };
-
     function numeroPorExtensoBRL(valor) {
       const unidades = ['','um','dois','três','quatro','cinco','seis','sete','oito','nove'];
       const onzeDezenove = ['onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
@@ -220,7 +196,6 @@
       ];
       const inteiro = Math.floor(Math.abs(valor));
       const cent = Math.round((Math.abs(valor) - inteiro) * 100);
-
       const tres = (n) => {
         if (n === 0) return '';
         if (n === 100) return 'cem';
@@ -234,14 +209,12 @@
         }
         return out.join(' e ');
       };
-
       const toGroups = (n) => {
         const s = n.toString().padStart(Math.ceil(n.toString().length/3)*3, '0');
         const arr = [];
         for (let i=0;i<s.length;i+=3) arr.push(Number(s.slice(i,i+3)));
         return arr;
       };
-
       const grupos = toGroups(inteiro);
       let partes = [];
       grupos.forEach((g, idx) => {
@@ -253,26 +226,20 @@
         else if (g === 1) partes.push(t + (nome.sing ? ' ' + nome.sing : ''));
         else partes.push(t + ' ' + nome.plur);
       });
-
       let reais = partes.join(', ').replace(/, ([^,]*)$/, ' e $1');
       if (!reais) reais = 'zero';
       reais += (inteiro === 1 ? ' real' : ' reais');
-
       let centavos = '';
       if (cent > 0) {
         const t = tres(cent);
         centavos = (t || 'zero') + (cent === 1 ? ' centavo' : ' centavos');
       }
-
       return centavos ? (reais + ' e ' + centavos) : reais;
     }
-
-    // ===== Config e campos =====
     const DOCS = {
       InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'],
       PortoStone: ['Contrato', 'Ordem_de_Servico'],
     };
-
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -281,7 +248,6 @@
       { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
     ];
-
     const FIELDS_BY_DOC = {
       InovaInox: {
         Contrato: [ { key: 'NÚMERO_PARCELAS', label: 'Número de parcelas' } ],
@@ -297,7 +263,6 @@
       },
       PortoStone: { Contrato: [], Ordem_de_Servico: [{ key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }] },
     };
-
     const FIN_KEYS = {
       VALOR_PRODUTOS_INSTALACAO: { label: 'Valor Instalação e Produtos', type: 'money' },
       VALOR_DESCONTO: { label: 'Desconto', type: 'money' },
@@ -308,17 +273,12 @@
       NÚMERO_PARCELAS: { label: 'Número de Parcelas', type: 'number' },
       VALOR_PARCELAS: { label: 'Valor das parcelas (auto)', type: 'money-readonly' },
     };
-
     const IMAGE_KEY_HINT = /(DESENHO|FOTO)/i;
-
-    // ===== Navegação/estado =====
     let currentCompany = null;
-
     function selectCompanyCard(btn) {
       els('.company-card').forEach(b => b.classList.remove('selected-card'));
       btn.classList.add('selected-card');
     }
-
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
       (DOCS[currentCompany] || []).forEach((name) => {
@@ -332,9 +292,7 @@
       els('.doc-check').forEach((c) => c.addEventListener('change', () => { renderAccordion(); hydrateIcons(); }));
       hydrateIcons();
     }
-
     function getActiveDocs() { return (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked); }
-
     function getAllFieldsGrouped() {
       const active = getActiveDocs();
       const groups = {
@@ -344,13 +302,11 @@
         financeiro: { title: 'Financeiro', fields: [] },
         comercial: { title: 'Comercial / Operacional (OS)', fields: [] },
       };
-
       COMMON_FIELDS.forEach(f => {
         if (['NOME_CONTRATANTE','CPF_CONTRATANTE','TELEFONE_CONTRATANTE'].includes(f.key)) groups.identificacao.fields.push(f);
         else if (['ENDERECO_CONTRATANTE'].includes(f.key)) groups.endereco.fields.push(f);
         else if (['TIPO_DE_PROJETO','DATA_EMISSAO_CONTRATO'].includes(f.key)) groups.projeto.fields.push(f);
       });
-
       active.forEach(doc => {
         (FIELDS_BY_DOC[currentCompany]?.[doc] || []).forEach(f => {
           if (doc === 'Capa' && f.key === 'ENDERECO_CONTRATANTE_PROJETO') groups.endereco.fields.push(f);
@@ -358,7 +314,6 @@
           else if (doc === 'Ordem_de_Servico') groups.comercial.fields.push(f);
         });
       });
-
       if (active.includes('Contrato')) {
         groups.financeiro.fields = [
           { key: 'VALOR_PRODUTOS_INSTALACAO', ...FIN_KEYS.VALOR_PRODUTOS_INSTALACAO },
@@ -371,24 +326,20 @@
           { key: 'VALOR_PARCELAS', ...FIN_KEYS.VALOR_PARCELAS },
         ];
       }
-
       for (const g of Object.values(groups)) {
         const seen = new Set();
         g.fields = g.fields.filter(f => !seen.has(f.key) && seen.add(f.key));
       }
       return groups;
     }
-
     function fieldInput({ key, label, type='text', placeholder='', options=[] }) {
       const id = 'f-' + key;
       const baseLabel = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
-
       if (type === 'textarea' || type === 'textarea-readonly') {
         return `<div class="flex flex-col gap-1">${baseLabel}
           <textarea id="${id}" data-key="${key}" rows="2" class="mt-1 w-full rounded-xl border px-3 py-2 ${type==='textarea-readonly'?'bg-gray-50 text-gray-700':''}" ${type==='textarea-readonly'?'readonly':''}></textarea>
         </div>`;
       }
-
       if (type === 'select') {
         return `<div class="flex flex-col gap-1">${baseLabel}
           <select id="${id}" data-key="${key}" class="mt-1 w-full rounded-xl border px-3 py-2">
@@ -396,24 +347,20 @@
           </select>
         </div>`;
       }
-
       if (type === 'number') {
         return `<div class="flex flex-col gap-1">${baseLabel}
           <input id="${id}" data-key="${key}" type="number" min="0" step="1" class="mt-1 w-full rounded-xl border px-3 py-2" />
         </div>`;
       }
-
       if (type === 'money' || type === 'money-readonly') {
         return `<div class="flex flex-col gap-1">${baseLabel}
           <input id="${id}" data-key="${key}" inputmode="decimal" class="mt-1 w-full rounded-xl border px-3 py-2 ${type==='money-readonly'?'bg-gray-50 text-gray-700':''}" ${type==='money-readonly'?'readonly':''} />
         </div>`;
       }
-
       return `<div class="flex flex-col gap-1">${baseLabel}
         <input id="${id}" data-key="${key}" placeholder="${placeholder}" class="mt-1 w-full rounded-xl border px-3 py-2" />
       </div>`;
     }
-
     function renderFinanceCustom(fields) {
       const input = (key) => fieldInput(fields.find(f=>f.key===key));
       const totalRow = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${input('VALOR_TOTAL')}${input('VALOR_TOTAL_POR_EXTENSO')}</div>`;
@@ -426,7 +373,6 @@
           <div id="wrap-METODO_PAGAMENTO_ENTRADA" class="hidden">${input('METODO_PAGAMENTO_ENTRADA')}</div>
         </div>`;
       const parcelasRow = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${input('NÚMERO_PARCELAS')}${input('VALOR_PARCELAS')}</div>`;
-
       return `<div class="space-y-3">
         ${input('VALOR_PRODUTOS_INSTALACAO')}
         ${input('VALOR_DESCONTO')}
@@ -435,12 +381,10 @@
         ${parcelasRow}
       </div>`;
     }
-
     function renderAccordion() {
       const wrap = el('#accordion'); wrap.innerHTML = '';
       const groups = getAllFieldsGrouped();
       const order = ['identificacao','endereco','projeto','financeiro','comercial'];
-
       order.forEach((gk, idx) => {
         const g = groups[gk];
         if (!g.fields.length) return;
@@ -460,20 +404,16 @@
             </div>
           </div>`);
       });
-
       els('.acc-header').forEach(h => h.addEventListener('click', () => {
         const id = h.dataset.target; el('#'+id).classList.toggle('hidden');
       }));
-
       bindFinanceHandlers();
       bindGenericHandlers();
       updateCalculatedFields();
       refreshPreview();
-
       hydrateIcons();
       installFilter();
     }
-
     function bindGenericHandlers() {
       const date = el('#f-DATA_EMISSAO_CONTRATO');
       if (date && !date.value) date.value = new Date().toLocaleDateString('pt-BR');
@@ -482,14 +422,12 @@
         inp.addEventListener('blur', refreshPreview);
       });
     }
-
     function bindFinanceHandlers() {
       ['VALOR_PRODUTOS_INSTALACAO','VALOR_DESCONTO','VALOR_ENTRADA'].forEach(k => {
         const inp = el('#f-' + k); if (!inp) return;
         inp.addEventListener('input', () => { updateCalculatedFields(); refreshPreview(); });
         inp.addEventListener('blur', () => { const n = parseBRL(inp.value); inp.value = n ? formatBRL(n) : ''; updateCalculatedFields(); refreshPreview(); });
       });
-
       const chk = el('#chk-VALOR_ENTRADA');
       const inpEnt = el('#f-VALOR_ENTRADA');
       const wrapMetodo = el('#wrap-METODO_PAGAMENTO_ENTRADA');
@@ -499,33 +437,26 @@
         if (wrapMetodo) wrapMetodo.classList.toggle('hidden', !on);
         updateCalculatedFields(); refreshPreview();
       });
-
       const npar = el('#f-NÚMERO_PARCELAS');
       if (npar) {
         npar.addEventListener('input', () => { updateCalculatedFields(); refreshPreview(); });
         npar.addEventListener('blur', () => { updateCalculatedFields(); refreshPreview(); });
       }
     }
-
     function updateCalculatedFields() {
       const vProdutos = parseBRL(el('#f-VALOR_PRODUTOS_INSTALACAO')?.value || '');
       const vDesc = parseBRL(el('#f-VALOR_DESCONTO')?.value || '');
       const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
-
       const totalEl = el('#f-VALOR_TOTAL'); if (totalEl) totalEl.value = total ? formatBRL(total) : '';
       const extensoEl = el('#f-VALOR_TOTAL_POR_EXTENSO'); if (extensoEl) extensoEl.value = total ? numeroPorExtensoBRL(total) : '';
-
       const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
       const vEntrada = entradaOn ? parseBRL(el('#f-VALOR_ENTRADA')?.value || '') : 0;
-
       const nParcelas = parseInt(el('#f-NÚMERO_PARCELAS')?.value || '0', 10);
       const base = Math.max(0, total - (vEntrada || 0));
       const vParcela = (nParcelas > 0) ? (base / nParcelas) : 0;
-
       const parcelasEl = el('#f-VALOR_PARCELAS');
       if (parcelasEl) parcelasEl.value = (nParcelas > 0 && base >= 0) ? formatBRL(vParcela) : '';
     }
-
     function installFilter() {
       const fi = el('#filter-input'); if (!fi || fi._bound) return;
       fi._bound = true;
@@ -539,8 +470,6 @@
         });
       });
     }
-
-    // ===== Arquivo / XML =====
     async function fileToArrayBuffer(file) {
       return new Promise((resolve, reject) => {
         const fr = new FileReader();
@@ -549,19 +478,16 @@
         fr.readAsArrayBuffer(file);
       });
     }
-
     async function fetchArrayBuffer(urlBase) {
       const url = urlBase.endsWith('.docx') ? urlBase : `${urlBase}.docx`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error('Template não encontrado: ' + url);
       return await resp.arrayBuffer();
     }
-
     function appendImagesToDocument(zip, imagesU8) {
       if (!imagesU8.length) return zip;
       const mediaNames = imagesU8.map((u8, i) => `word/media/compat_img_${Date.now()}_${i}.png`);
       mediaNames.forEach((name, i) => zip.file(name, imagesU8[i]));
-
       const relsPath = "word/_rels/document.xml.rels";
       let relsXml = zip.file(relsPath).asText();
       const relBase = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
@@ -575,7 +501,6 @@
       ).join('');
       relsXml = relsXml.replace(/<\/Relationships>\s*$/i, `${relsToAdd}</Relationships>`);
       zip.file(relsPath, relsXml);
-
       const docPath = "word/document.xml";
       let docXml = zip.file(docPath).asText();
       const pageBreak = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
@@ -607,19 +532,16 @@
           </w:drawing>
         </w:r>
       </w:p>`).join('\n');
-
       docXml = docXml.replace(/<\/w:document>\s*$/i, `${pageBreak}\n${drawings}\n</w:document>`);
       zip.file(docPath, docXml);
       return zip;
     }
-
     function normalize_xml(xml) {
       return xml
         .replace(/<w:t[^>]*>\s+/g, '<w:t>')
         .replace(/\s+<\/w:t>/g, '</w:t>')
         .replace(/>\s+</g, '><');
     }
-
     function replacePlaceholdersInZip(zip, replacements, removeImageKeysRegex) {
       const files = zip.file(/word\/.*\.xml/);
       files.forEach(f => {
@@ -629,71 +551,17 @@
           const pattern = new RegExp(String.raw`\{\{\s*${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*\}\}`, 'g');
           xml = xml.replace(pattern, v);
         });
-        // Remove placeholders de imagem no corpo do documento
         xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
         zip.file(f.name, xml);
       });
       return zip;
     }
-
-    // ===== Conversão DOCX->PDF (com guards) =====
-    async function docxBlobToPdf(blob, filenamePdf) {
-      const stage = document.getElementById('pdf-stage');
-      if (!stage) throw new Error('#pdf-stage não encontrado');
-
-      // Guardas dos bundles externos
-      if (!window.docx || typeof window.docx.renderAsync !== 'function') {
-        alert("docx-preview não carregado corretamente. Tentando fallback para DOCX.");
-        throw new Error("docx-preview não carregado");
-      }
-      if (!window.html2pdf || typeof window.html2pdf !== 'function') {
-        alert("html2pdf não carregado. Baixando DOCX como fallback.");
-        throw new Error("html2pdf não carregado");
-      }
-
-      stage.innerHTML = '';
-      stage.classList.remove('hidden');
-
-      // Renderiza o DOCX em HTML
-      await window.docx.renderAsync(blob, stage, null, {
-        ignoreWidth: false, ignoreHeight: false, className: 'docx', inWrapper: true
-      });
-
-      // Gera PDF a partir do HTML renderizado
-      const opt = {
-        margin:       [10, 10, 10, 10],
-        filename:     filenamePdf,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-      await html2pdf().set(opt).from(stage).save();
-
-      stage.classList.add('hidden');
-    }
-
-    function downloadBlobFallbackDOCX(blob, filename) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.rel = 'noopener';
-      document.body.appendChild(a); a.click(); a.remove();
-      const manual = el('#manual-link'); const box = el('#fallback-link');
-      if (manual && box) {
-        manual.href = url; manual.download = filename; box.classList.remove('hidden');
-        setTimeout(() => { URL.revokeObjectURL(url); box.classList.add('hidden'); }, 8000);
-      } else {
-        setTimeout(() => URL.revokeObjectURL(url), 8000);
-      }
-    }
-
-    // ===== Coleta/preview =====
     function collectDataObject() {
       const data = {};
       els('[data-key]').forEach((inp) => {
         const key = inp.dataset.key;
         let val = (inp.value || '').toString();
         if (key === 'DATA_EMISSAO_CONTRATO' && !val) val = new Date().toLocaleDateString('pt-BR');
-
         if (key === 'VALOR_ENTRADA') {
           const on = !!el('#chk-VALOR_ENTRADA')?.checked;
           val = on ? val : '';
@@ -704,20 +572,16 @@
         }
         data[key] = val;
       });
-
       const vProdutos = parseBRL(data['VALOR_PRODUTOS_INSTALACAO'] || '');
       const vDesc = parseBRL(data['VALOR_DESCONTO'] || '');
       const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
       data['VALOR_TOTAL'] = total ? formatBRL(total) : '';
       data['VALOR_TOTAL_POR_EXTENSO'] = total ? numeroPorExtensoBRL(total) : '';
-
       const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
       const vEntrada = entradaOn ? parseBRL(data['VALOR_ENTRADA'] || '') : 0;
       const nParcelas = parseInt(data['NÚMERO_PARCELAS'] || '0', 10);
       const base = Math.max(0, total - (vEntrada || 0));
       data['VALOR_PARCELAS'] = (nParcelas > 0 && base >= 0) ? formatBRL(base / nParcelas) : '';
-
-      // Campos personalizados
       const ks = el('#custom-fields')?.querySelectorAll('[data-type="custom-key"]') || [];
       const vs = el('#custom-fields')?.querySelectorAll('[data-type="custom-val"]') || [];
       ks.forEach((kEl, i) => {
@@ -725,10 +589,8 @@
         const val = vs[i]?.value || '';
         if (rawKey) data[rawKey] = val;
       });
-
       return data;
     }
-
     function refreshPreview() {
       const prev = el('#preview'); if (!prev) return;
       prev.innerHTML = '';
@@ -738,8 +600,6 @@
         prev.insertAdjacentHTML('beforeend', `<div><code>{{${k}}}</code> → <span class="text-gray-700">${(v || '<i>vazio</i>')}</span></div>`);
       });
     }
-
-    // ===== Progresso / Diagnóstico =====
     function showProgress(show) {
       const m = document.getElementById('progress-modal');
       if (show) { m.classList.remove('hidden'); m.style.display = 'flex'; setProgress(0, 'Preparando…'); }
@@ -758,113 +618,42 @@
       const d = document.getElementById('diag'); if (!d) return;
       d.classList.toggle('hidden', !show);
     }
-
+    // ===== Conversão DOCX->PDF =====
+    async function docxBlobToPdf(blob, filenamePdf) {
+      const stage = document.getElementById('pdf-stage');
+      if (!stage) throw new Error('#pdf-stage não encontrado');
+      if (!window.docx || typeof window.docx.renderAsync !== 'function') {
+        alert("docx-preview não carregado corretamente. PDF não pôde ser gerado.");
+        throw new Error("docx-preview não carregado");
+      }
+      if (!window.html2pdf || typeof window.html2pdf !== 'function') {
+        alert("html2pdf não carregado. PDF não pôde ser gerado.");
+        throw new Error("html2pdf não carregado");
+      }
+      stage.innerHTML = '';
+      stage.classList.remove('hidden');
+      await window.docx.renderAsync(blob, stage, null, {
+        ignoreWidth: false, ignoreHeight: false, className: 'docx', inWrapper: true
+      });
+      if (!stage.innerHTML || stage.innerHTML.trim() === '') {
+        alert('Falha ao renderizar o template DOCX. PDF não será gerado!');
+        throw new Error("Falha ao renderizar DOCX em HTML");
+      }
+      const opt = {
+        margin: [10,10,10,10],
+        filename: filenamePdf,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      await html2pdf().set(opt).from(stage).save();
+      stage.classList.add('hidden');
+    }
     // ===== Geração (DOCX em memória → PDF) =====
     el('#btn-generate').addEventListener('click', async () => {
       if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
       const chosen = (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked);
       if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
-
       showProgress(true); setDiag(true);
       try {
-        const data = collectDataObject();
-
-        // Diag
-        const diag = `
-          <div><b>Chaves (texto) → valor:</b></div>
-          <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('')}</ul>
-          <div class="mt-2 text-xs text-gray-500">Placeholders que combinem <code>/(DESENHO|FOTO)/i</code> serão removidos e as imagens anexadas ao final.</div>
-        `;
-        el('#diag-content').innerHTML = diag;
-        el('#diag').classList.remove('hidden');
-
-        // Imagens
-        const images = [];
-        const files = el('#foto-input').files || [];
-        for (const f of files) {
-          const ab = await fileToArrayBuffer(f);
-          images.push(new Uint8Array(ab));
-        }
-
-        for (let i = 0; i < chosen.length; i++) {
-          setProgress(Math.round((i / chosen.length) * 100), `Processando ${chosen[i]}…`);
-          await generateOnePdf(currentCompany, chosen[i], data, images);
-        }
-
-        confetti({ particleCount: 120, spread: 60, origin: { y: 0.7 }});
-        const t = el('#toast'); t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'), 1800);
-      } catch (e) {
-        console.error(e);
-        alert('Falha na geração: ' + (e.message || e));
-      } finally {
-        setTimeout(() => { el('#progress-modal').classList.add('hidden'); el('#progress-modal').style.display='none'; }, 1200);
-      }
-    });
-
-    async function generateOnePdf(company, docName, data, images) {
-      setProgress(5, 'Baixando template…');
-      const url = `templates/${company}/${docName}.docx`;
-      const ab = await fetchArrayBuffer(url);
-
-      setProgress(25, 'Abrindo arquivo…');
-      if (!window.PizZip) throw new Error('PizZip não carregado');
-      let zip = new PizZip(ab);
-
-      setProgress(55, 'Substituindo placeholders…');
-      zip = replacePlaceholdersInZip(zip, data, IMAGE_KEY_HINT);
-
-      setProgress(75, 'Anexando imagens (final)…');
-      if (images && images.length) zip = appendImagesToDocument(zip, images);
-
-      setProgress(90, 'Gerando PDF…');
-      const docxBlob = zip.generate({ type: 'blob' }); // DOCX em memória
-      try {
-        await docxBlobToPdf(docxBlob, `${company}_${docName}.pdf`);
-      } catch (err) {
-        console.error('Falha na conversão para PDF; fazendo fallback para DOCX', err);
-        downloadBlobFallbackDOCX(docxBlob, `${company}_${docName}.docx`);
-        throw err; // para o alerta indicar que houve fallback
-      }
-
-      setProgress(100, 'Concluído!');
-    }
-
-    // Campos personalizados (UI)
-    el('#add-custom').addEventListener('click', () => {
-      const box = document.createElement('div');
-      box.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
-      box.innerHTML = `
-        <input data-type="custom-key" placeholder="CHAVE_PERSONALIZADA (sem {{ }})" class="rounded-xl border px-3 py-2 text-sm" />
-        <input data-type="custom-val" placeholder="Valor" class="rounded-xl border px-3 py-2 text-sm" />
-      `;
-      el('#custom-fields').appendChild(box);
-    });
-
-    // ===== Boot =====
-    document.addEventListener('DOMContentLoaded', () => {
-      // Hidratar ícones iniciais
-      hydrateIcons();
-
-      // Delegação de clique para selecionar empresa
-      document.addEventListener('click', (ev) => {
-        const btn = ev.target.closest('.company-card');
-        if (!btn) return;
-        const company = btn.dataset.company;
-        if (!company) return;
-
-        currentCompany = company;
-        selectCompanyCard(btn);
-
-        el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
-        el('#step-config').classList.remove('hidden');
-
-        renderDocOptions();
-        renderAccordion(); // (chama hydrateIcons internamente)
-      });
-
-      // Botão voltar
-      el('#btn-back').addEventListener('click', () => location.reload());
-    });
-  </script>
-</body>
-</html>
+       
