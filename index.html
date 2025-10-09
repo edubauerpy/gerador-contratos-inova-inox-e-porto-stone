@@ -22,8 +22,8 @@
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide Icons (UMD) -->
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <!-- Lucide Icons (UMD) — usar defer para garantir que window.lucide exista antes do hydrate -->
+  <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <style>
     .progress-striped {
@@ -55,9 +55,9 @@
     </header>
 
     <!-- Empresas -->
-    <section class="grid md:grid-cols-2 gap-4">
-      <button data-company="InovaInox" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
-        <div class="flex items-center gap-3">
+    <section id="company-grid" class="grid md:grid-cols-2 gap-4">
+      <button type="button" data-company="InovaInox" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
+        <div class="flex items-center gap-3 pointer-events-none">
           <div class="flex items-center gap-2 text-gray-700">
             <i data-lucide="building-2" class="w-6 h-6"></i>
             <i data-lucide="drill" class="w-6 h-6"></i>
@@ -69,8 +69,8 @@
         </div>
       </button>
 
-      <button data-company="PortoStone" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
-        <div class="flex items-center gap-3">
+      <button type="button" data-company="PortoStone" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
+        <div class="flex items-center gap-3 pointer-events-none">
           <div class="flex items-center gap-2 text-gray-700">
             <i data-lucide="building-2" class="w-6 h-6"></i>
             <i data-lucide="hammer" class="w-6 h-6"></i>
@@ -87,7 +87,7 @@
     <section id="step-config" class="hidden mt-6">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
-          <button id="btn-back" class="text-sm px-3 py-1.5 rounded-lg border">← Voltar</button>
+          <button id="btn-back" type="button" class="text-sm px-3 py-1.5 rounded-lg border">← Voltar</button>
           <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
         </div>
       </div>
@@ -121,13 +121,13 @@
           <div class="mt-5">
             <div class="flex items-center justify-between">
               <div class="font-medium">Campos personalizados</div>
-              <button id="add-custom" class="text-sm px-3 py-1.5 rounded-lg border">+ Adicionar</button>
+              <button id="add-custom" type="button" class="text-sm px-3 py-1.5 rounded-lg border">+ Adicionar</button>
             </div>
             <div id="custom-fields" class="mt-2 space-y-2"></div>
           </div>
 
           <div class="flex items-center justify-end gap-3 mt-6">
-            <button id="btn-generate" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar PDF</button>
+            <button id="btn-generate" type="button" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar PDF</button>
           </div>
         </div>
       </div>
@@ -181,6 +181,22 @@
   <div id="pdf-stage" class="hidden"></div>
 
   <script>
+    // ===== Helpers =====
+    const el  = (s) => document.querySelector(s);
+    const els = (s) => Array.from(document.querySelectorAll(s));
+
+    // Re-render de ícones Lucide sempre que inserirmos novos elementos com data-lucide
+    function hydrateIcons() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      } else {
+        // tenta novamente após um tick se o script ainda estiver carregando (defer)
+        setTimeout(() => {
+          if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+        }, 0);
+      }
+    }
+
     // ===== Helpers numéricos/BRL =====
     const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
     const formatBRL = (n) => fmtBRL.format(isFinite(n) ? n : 0);
@@ -265,7 +281,7 @@
       { key: 'ENDERECO_CONTRATANTE', label: 'Endereço' },
       { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
       { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
-    };
+    ];
 
     const FIELDS_BY_DOC = {
       InovaInox: {
@@ -295,33 +311,15 @@
     };
 
     const IMAGE_KEY_HINT = /(DESENHO|FOTO)/i;
-    const el  = (s) => document.querySelector(s);
-    const els = (s) => Array.from(document.querySelectorAll(s));
-
-    document.addEventListener('DOMContentLoaded', () => {
-      if (window.lucide && lucide.createIcons) lucide.createIcons();
-    });
 
     // ===== Navegação/estado =====
     let currentCompany = null;
+    let companyListenersBound = false;
 
     function selectCompanyCard(btn) {
       els('.company-card').forEach(b => b.classList.remove('selected-card'));
       btn.classList.add('selected-card');
     }
-
-    els('.company-card').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        currentCompany = btn.dataset.company;
-        selectCompanyCard(btn);
-        el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
-        renderDocOptions();
-        renderAccordion();
-        el('#step-config').classList.remove('hidden');
-      });
-    });
-
-    el('#btn-back').addEventListener('click', () => location.reload());
 
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
@@ -333,7 +331,8 @@
             <span>${name.replace(/_/g,' ')}</span>
           </label>`);
       });
-      els('.doc-check').forEach((c) => c.addEventListener('change', renderAccordion));
+      els('.doc-check').forEach((c) => c.addEventListener('change', () => { renderAccordion(); hydrateIcons(); }));
+      hydrateIcons(); // garantir ícones nos itens (se houver)
     }
 
     function getActiveDocs() { return (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked); }
@@ -451,7 +450,7 @@
         const count = g.fields.length;
         wrap.insertAdjacentHTML('beforeend', `
           <div class="acc-item">
-            <button class="acc-header" data-target="${bodyId}">
+            <button type="button" class="acc-header" data-target="${bodyId}">
               <span class="font-medium">${g.title} <span class="text-xs text-gray-500">(${count})</span></span>
               <i data-lucide="chevron-down" class="w-5 h-5"></i>
             </button>
@@ -464,6 +463,7 @@
           </div>`);
       });
 
+      // toggle acordeão
       els('.acc-header').forEach(h => h.addEventListener('click', () => {
         const id = h.dataset.target; el('#'+id).classList.toggle('hidden');
       }));
@@ -472,6 +472,8 @@
       bindGenericHandlers();
       updateCalculatedFields();
       refreshPreview();
+
+      hydrateIcons(); // garantir que o chevron e quaisquer ícones renderizem
       installFilter();
     }
 
@@ -828,12 +830,34 @@
       el('#custom-fields').appendChild(box);
     });
 
-    // Garantir que a seção apareça após escolher a empresa
-    (function init() {
-      els('.company-card').forEach(b=>b.addEventListener('click', ()=> {
-        el('#step-config').classList.remove('hidden');
-      }));
-    })();
+    // ===== Boot =====
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1) hidratar ícones iniciais
+      hydrateIcons();
+
+      // 2) delegação de clique para selecionar empresa (funciona em qualquer ponto do card)
+      if (!companyListenersBound) {
+        companyListenersBound = true;
+        document.addEventListener('click', (ev) => {
+          const btn = ev.target.closest('.company-card');
+          if (!btn) return;
+          const company = btn.dataset.company;
+          if (!company) return;
+
+          currentCompany = company;
+          selectCompanyCard(btn);
+
+          el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
+          el('#step-config').classList.remove('hidden');
+
+          renderDocOptions();
+          renderAccordion(); // hydrateIcons() é chamado dentro de renderAccordion também
+        });
+      }
+
+      // 3) botão voltar
+      el('#btn-back').addEventListener('click', () => location.reload());
+    });
   </script>
 </body>
 </html>
