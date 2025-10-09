@@ -22,7 +22,7 @@
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide Icons (UMD) — usar defer para garantir que window.lucide exista antes do hydrate -->
+  <!-- Lucide Icons (UMD) — defer para garantir que window.lucide exista antes do hydrate -->
   <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <style>
@@ -185,12 +185,11 @@
     const el  = (s) => document.querySelector(s);
     const els = (s) => Array.from(document.querySelectorAll(s));
 
-    // Re-render de ícones Lucide sempre que inserirmos novos elementos com data-lucide
+    // Hidrata ícones Lucide quando o bundle estiver pronto
     function hydrateIcons() {
       if (window.lucide && typeof window.lucide.createIcons === 'function') {
         window.lucide.createIcons();
       } else {
-        // tenta novamente após um tick se o script ainda estiver carregando (defer)
         setTimeout(() => {
           if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
         }, 0);
@@ -314,7 +313,6 @@
 
     // ===== Navegação/estado =====
     let currentCompany = null;
-    let companyListenersBound = false;
 
     function selectCompanyCard(btn) {
       els('.company-card').forEach(b => b.classList.remove('selected-card'));
@@ -332,7 +330,7 @@
           </label>`);
       });
       els('.doc-check').forEach((c) => c.addEventListener('change', () => { renderAccordion(); hydrateIcons(); }));
-      hydrateIcons(); // garantir ícones nos itens (se houver)
+      hydrateIcons();
     }
 
     function getActiveDocs() { return (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked); }
@@ -463,7 +461,6 @@
           </div>`);
       });
 
-      // toggle acordeão
       els('.acc-header').forEach(h => h.addEventListener('click', () => {
         const id = h.dataset.target; el('#'+id).classList.toggle('hidden');
       }));
@@ -473,7 +470,7 @@
       updateCalculatedFields();
       refreshPreview();
 
-      hydrateIcons(); // garantir que o chevron e quaisquer ícones renderizem
+      hydrateIcons();
       installFilter();
     }
 
@@ -639,9 +636,21 @@
       return zip;
     }
 
-    // ===== Conversão DOCX->PDF =====
+    // ===== Conversão DOCX->PDF (com guards) =====
     async function docxBlobToPdf(blob, filenamePdf) {
       const stage = document.getElementById('pdf-stage');
+      if (!stage) throw new Error('#pdf-stage não encontrado');
+
+      // Guardas dos bundles externos
+      if (!window.docx || typeof window.docx.renderAsync !== 'function') {
+        alert("docx-preview não carregado corretamente. Tentando fallback para DOCX.");
+        throw new Error("docx-preview não carregado");
+      }
+      if (!window.html2pdf || typeof window.html2pdf !== 'function') {
+        alert("html2pdf não carregado. Baixando DOCX como fallback.");
+        throw new Error("html2pdf não carregado");
+      }
+
       stage.innerHTML = '';
       stage.classList.remove('hidden');
 
@@ -652,7 +661,7 @@
 
       // Gera PDF a partir do HTML renderizado
       const opt = {
-        margin:       [10, 10, 10, 10], // mm
+        margin:       [10, 10, 10, 10],
         filename:     filenamePdf,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true },
@@ -798,6 +807,7 @@
       const ab = await fetchArrayBuffer(url);
 
       setProgress(25, 'Abrindo arquivo…');
+      if (!window.PizZip) throw new Error('PizZip não carregado');
       let zip = new PizZip(ab);
 
       setProgress(55, 'Substituindo placeholders…');
@@ -813,7 +823,7 @@
       } catch (err) {
         console.error('Falha na conversão para PDF; fazendo fallback para DOCX', err);
         downloadBlobFallbackDOCX(docxBlob, `${company}_${docName}.docx`);
-        throw err; // para aparecer no alerta e indicar que houve fallback
+        throw err; // para o alerta indicar que houve fallback
       }
 
       setProgress(100, 'Concluído!');
@@ -832,30 +842,27 @@
 
     // ===== Boot =====
     document.addEventListener('DOMContentLoaded', () => {
-      // 1) hidratar ícones iniciais
+      // Hidratar ícones iniciais
       hydrateIcons();
 
-      // 2) delegação de clique para selecionar empresa (funciona em qualquer ponto do card)
-      if (!companyListenersBound) {
-        companyListenersBound = true;
-        document.addEventListener('click', (ev) => {
-          const btn = ev.target.closest('.company-card');
-          if (!btn) return;
-          const company = btn.dataset.company;
-          if (!company) return;
+      // Delegação de clique para selecionar empresa
+      document.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.company-card');
+        if (!btn) return;
+        const company = btn.dataset.company;
+        if (!company) return;
 
-          currentCompany = company;
-          selectCompanyCard(btn);
+        currentCompany = company;
+        selectCompanyCard(btn);
 
-          el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
-          el('#step-config').classList.remove('hidden');
+        el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
+        el('#step-config').classList.remove('hidden');
 
-          renderDocOptions();
-          renderAccordion(); // hydrateIcons() é chamado dentro de renderAccordion também
-        });
-      }
+        renderDocOptions();
+        renderAccordion(); // (chama hydrateIcons internamente)
+      });
 
-      // 3) botão voltar
+      // Botão voltar
       el('#btn-back').addEventListener('click', () => location.reload());
     });
   </script>
