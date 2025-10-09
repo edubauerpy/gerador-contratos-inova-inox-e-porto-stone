@@ -52,7 +52,7 @@
       <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (PDF)</h1>
       <div class="text-sm text-gray-500">Templates DOCX com {{CHAVE}}</div>
     </header>
-    <!-- Empresas -->
+
     <section id="company-grid" class="grid md:grid-cols-2 gap-4">
       <button type="button" data-company="InovaInox" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
         <div class="flex items-center gap-3 pointer-events-none">
@@ -66,6 +66,7 @@
           </div>
         </div>
       </button>
+
       <button type="button" data-company="PortoStone" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
         <div class="flex items-center gap-3 pointer-events-none">
           <div class="flex items-center gap-2 text-gray-700">
@@ -79,7 +80,7 @@
         </div>
       </button>
     </section>
-    <!-- Config -->
+
     <section id="step-config" class="hidden mt-6">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
@@ -87,8 +88,8 @@
           <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
         </div>
       </div>
+
       <div class="grid lg:grid-cols-3 gap-4">
-        <!-- Documentos -->
         <div class="rounded-2xl bg-white shadow border p-5">
           <div class="font-medium mb-3">Documentos</div>
           <div id="doc-options" class="space-y-2 text-sm"></div>
@@ -97,7 +98,6 @@
             Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) são removidos do corpo e imagens anexadas no final.
           </p>
         </div>
-        <!-- Campos -->
         <div class="rounded-2xl bg-white shadow border p-5 lg:col-span-2">
           <div class="flex items-center justify-between mb-3">
             <div class="font-medium">Campos</div>
@@ -121,17 +121,16 @@
           </div>
         </div>
       </div>
-      <!-- Prévia -->
       <div class="mt-6 rounded-2xl bg-white shadow border p-5">
         <div class="font-medium">Prévia de substituições</div>
         <div id="preview" class="mt-2 text-sm grid md:grid-cols-2 gap-x-6 gap-y-1"></div>
       </div>
     </section>
+
     <footer class="text-center text-xs text-gray-400 mt-10">
       Templates DOCX com {{CHAVE}} → exporta PDF no navegador.
     </footer>
   </div>
-  <!-- Modal de progresso -->
   <div id="progress-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
       <div class="flex items-center gap-3 mb-3">
@@ -153,16 +152,14 @@
       </div>
     </div>
   </div>
-  <!-- Toast -->
   <div id="toast" class="fixed left-1/2 -translate-x-1/2 top-6 hidden z-[60]">
     <div class="px-4 py-2 bg-white shadow-lg rounded-xl border flex items-center gap-2">
       <span>✅ PDF gerado!</span>
     </div>
   </div>
-  <!-- Palco invisível para renderização do DOCX->HTML antes do PDF -->
   <div id="pdf-stage" class="hidden"></div>
   <script>
-    // Helpers
+    // ===== Helpers =====
     const el  = (s) => document.querySelector(s);
     const els = (s) => Array.from(document.querySelectorAll(s));
     function hydrateIcons() {
@@ -556,6 +553,36 @@
       });
       return zip;
     }
+    async function docxBlobToPdf(blob, filenamePdf) {
+      const stage = document.getElementById('pdf-stage');
+      if (!stage) throw new Error('#pdf-stage não encontrado');
+      if (!window.docx || typeof window.docx.renderAsync !== 'function') {
+        alert("docx-preview não carregado corretamente. PDF não pôde ser gerado.");
+        throw new Error("docx-preview não carregado");
+      }
+      if (!window.html2pdf || typeof window.html2pdf !== 'function') {
+        alert("html2pdf não carregado. PDF não pôde ser gerado.");
+        throw new Error("html2pdf não carregado");
+      }
+      stage.innerHTML = '';
+      stage.classList.remove('hidden');
+      await window.docx.renderAsync(blob, stage, null, {
+        ignoreWidth: false, ignoreHeight: false, className: 'docx', inWrapper: true
+      });
+      if (!stage.innerHTML || stage.innerHTML.trim() === '') {
+        alert('Falha ao renderizar o template DOCX. PDF não será gerado!');
+        throw new Error("Falha ao renderizar DOCX em HTML");
+      }
+      const opt = {
+        margin: [10,10,10,10],
+        filename: filenamePdf,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      await html2pdf().set(opt).from(stage).save();
+      stage.classList.add('hidden');
+    }
     function collectDataObject() {
       const data = {};
       els('[data-key]').forEach((inp) => {
@@ -618,42 +645,92 @@
       const d = document.getElementById('diag'); if (!d) return;
       d.classList.toggle('hidden', !show);
     }
-    // ===== Conversão DOCX->PDF =====
-    async function docxBlobToPdf(blob, filenamePdf) {
-      const stage = document.getElementById('pdf-stage');
-      if (!stage) throw new Error('#pdf-stage não encontrado');
-      if (!window.docx || typeof window.docx.renderAsync !== 'function') {
-        alert("docx-preview não carregado corretamente. PDF não pôde ser gerado.");
-        throw new Error("docx-preview não carregado");
-      }
-      if (!window.html2pdf || typeof window.html2pdf !== 'function') {
-        alert("html2pdf não carregado. PDF não pôde ser gerado.");
-        throw new Error("html2pdf não carregado");
-      }
-      stage.innerHTML = '';
-      stage.classList.remove('hidden');
-      await window.docx.renderAsync(blob, stage, null, {
-        ignoreWidth: false, ignoreHeight: false, className: 'docx', inWrapper: true
-      });
-      if (!stage.innerHTML || stage.innerHTML.trim() === '') {
-        alert('Falha ao renderizar o template DOCX. PDF não será gerado!');
-        throw new Error("Falha ao renderizar DOCX em HTML");
-      }
-      const opt = {
-        margin: [10,10,10,10],
-        filename: filenamePdf,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-      await html2pdf().set(opt).from(stage).save();
-      stage.classList.add('hidden');
-    }
-    // ===== Geração (DOCX em memória → PDF) =====
     el('#btn-generate').addEventListener('click', async () => {
       if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
       const chosen = (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked);
       if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
       showProgress(true); setDiag(true);
       try {
-       
+        const data = collectDataObject();
+        const diag = `
+          <div><b>Chaves (texto) → valor:</b></div>
+          <ul class="list-disc pl-5">${Object.keys(data).map(k=>`<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('')}</ul>
+          <div class="mt-2 text-xs text-gray-500">Placeholders que combinem <code>/(DESENHO|FOTO)/i</code> serão removidos e as imagens anexadas ao final.</div>
+        `;
+        el('#diag-content').innerHTML = diag;
+        el('#diag').classList.remove('hidden');
+        const images = [];
+        const files = el('#foto-input').files || [];
+        for (const f of files) {
+          const ab = await fileToArrayBuffer(f);
+          images.push(new Uint8Array(ab));
+        }
+        for (let i = 0; i < chosen.length; i++) {
+          setProgress(Math.round((i / chosen.length) * 100), `Processando ${chosen[i]}…`);
+          await generateOnePdf(currentCompany, chosen[i], data, images);
+        }
+        confetti({ particleCount: 120, spread: 60, origin: { y: 0.7 }});
+        const t = el('#toast'); t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'), 1800);
+      } catch (e) {
+        console.error(e);
+        alert('Falha na geração: ' + (e.message || e));
+      } finally {
+        setTimeout(() => { el('#progress-modal').classList.add('hidden'); el('#progress-modal').style.display='none'; }, 1200);
+      }
+    });
+    async function generateOnePdf(company, docName, data, images) {
+      setProgress(5, 'Baixando template…');
+      const url = `templates/${company}/${docName}.docx`;
+      const ab = await fetchArrayBuffer(url);
+      setProgress(25, 'Abrindo arquivo…');
+      if (!window.PizZip) throw new Error('PizZip não carregado');
+      let zip = new PizZip(ab);
+      setProgress(55, 'Substituindo placeholders…');
+      zip = replacePlaceholdersInZip(zip, data, IMAGE_KEY_HINT);
+      setProgress(75, 'Anexando imagens (final)…');
+      if (images && images.length) zip = appendImagesToDocument(zip, images);
+      setProgress(90, 'Gerando PDF…');
+      const docxBlob = zip.generate({ type: 'blob' }); // DOCX em memória
+      try {
+        await docxBlobToPdf(docxBlob, `${company}_${docName}.pdf`);
+      } catch (err) {
+        console.error('Falha na conversão para PDF', err);
+        alert('Falha ao gerar PDF. Verifique o template, os campos ou tente novamente.');
+        throw err;
+      }
+      setProgress(100, 'Concluído!');
+    }
+    el('#add-custom').addEventListener('click', () => {
+      const box = document.createElement('div');
+      box.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
+      box.innerHTML = `
+        <input data-type="custom-key" placeholder="CHAVE_PERSONALIZADA (sem {{ }})" class="rounded-xl border px-3 py-2 text-sm" />
+        <input data-type="custom-val" placeholder="Valor" class="rounded-xl border px-3 py-2 text-sm" />
+      `;
+      el('#custom-fields').appendChild(box);
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+      function waitForLucide(cb) {
+        if (window.lucide && window.lucide.createIcons) cb();
+        else setTimeout(() => waitForLucide(cb), 50);
+      }
+      waitForLucide(() => {
+        hydrateIcons();
+        document.addEventListener('click', (ev) => {
+          const btn = ev.target.closest('.company-card');
+          if (!btn) return;
+          const company = btn.dataset.company;
+          if (!company) return;
+          currentCompany = company;
+          selectCompanyCard(btn);
+          el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
+          el('#step-config').classList.remove('hidden');
+          renderDocOptions();
+          renderAccordion();
+        });
+        el('#btn-back').addEventListener('click', () => location.reload());
+      });
+    });
+  </script>
+</body>
+</html>
