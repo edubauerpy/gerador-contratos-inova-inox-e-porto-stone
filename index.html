@@ -1,26 +1,318 @@
+# Gerador de Contratos — Flask (Python)
+
+Migração do seu app web para **Python + Flask**, mantendo o **frontend Tailwind/JS** praticamente igual e movendo a geração de **DOCX → PDF nativo** para o backend em Python. A UI visual (Tailwind, ícones Lucide, toasts, modal de progresso, confetti) permanece.
+
+---
+
+## Como executar
+
+1. **Salvar estrutura de pastas** (exemplo):
+
+```
+projeto/
+├─ app.py
+├─ requirements.txt
+├─ templates/
+│  └─ index.html
+└─ static/
+   └─ (vazio ou assets próprios)
+└─ templates_docs/
+   ├─ InovaInox/
+   │  ├─ Contrato.docx
+   │  ├─ Ordem_de_Servico.docx
+   │  └─ Capa.docx
+   └─ PortoStone/
+      ├─ Contrato.docx
+      └─ Ordem_de_Servico.docx
+```
+
+2. **Instalar dependências**:
+
+```
+python -m venv .venv
+source .venv/bin/activate  # (Windows: .venv\Scripts\activate)
+pip install -r requirements.txt
+```
+
+3. **Executar**:
+
+```
+python app.py
+```
+
+Acesse: [http://127.0.0.1:5000](http://127.0.0.1:5000)
+
+> Para gerar **PDF com texto selecionável**, no Windows/Mac o `docx2pdf` usa o Word instalado. No Linux, instale o LibreOffice e o app usa `soffice --headless` automaticamente.
+
+---
+
+## requirements.txt
+
+```
+Flask==3.0.3
+python-docx==1.1.2
+docxtpl==0.16.7
+num2words==0.5.13
+docx2pdf==0.1.8
+```
+
+> No Linux, `docx2pdf` geralmente não funciona; usamos LibreOffice. Instale via pacote da distro (ex.: `sudo apt install libreoffice`).
+
+---
+
+## app.py (Flask backend — geração DOCX e PDF nativo)
+
+```python
+import io
+import os
+import sys
+import json
+import base64
+import zipfile
+import platform
+import tempfile
+import subprocess
+from pathlib import Path
+from datetime import datetime
+
+from flask import Flask, send_from_directory, send_file, request, jsonify
+from docxtpl import DocxTemplate
+from docx import Document
+from docx.shared import Mm
+from num2words import num2words
+from decimal import Decimal, ROUND_HALF_UP
+
+try:
+    from docx2pdf import convert as docx2pdf_convert
+except Exception:
+    docx2pdf_convert = None
+
+APP_ROOT = Path(__file__).parent.resolve()
+TEMPLATES_DIR = APP_ROOT / "templates_docs"  # onde ficam os .docx originais
+BUILD_DIR = APP_ROOT / "_build"
+BUILD_DIR.mkdir(exist_ok=True)
+
+app = Flask(__name__, static_folder="static", template_folder="templates")
+
+# ===== Helpers =====
+
+def brl_decimal(n):
+    if isinstance(n, str):
+        clean = n.replace(" ", "").replace(".", "").replace(",", ".")
+        try:
+            n = Decimal(clean)
+        except Exception:
+            n = Decimal("0")
+    else:
+        n = Decimal(str(n))
+    return n.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def brl_fmt(n):
+    n = brl_decimal(n)
+    s = f"{n:,.2f}"  # 12,345.67
+    s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {s}"
+
+
+def por_extenso_brl(n):
+    n = brl_decimal(n)
+    inteiro = int(n)
+    cent = int((n - Decimal(inteiro)) * 100)
+    base = num2words(inteiro, lang='pt_BR')
+    if cent > 0:
+        return f"{base} reais e {num2words(cent, lang='pt_BR')} centavos"
+    return f"{base} reais"
+
+
+def ensure_parent(p: Path):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def gerar_pdf(caminho_docx: Path, caminho_pdf: Path):
+    """Gera PDF com texto selecionável.
+    - Windows/Mac: tenta usar docx2pdf (Word)
+    - Linux: LibreOffice headless
+    """
+    ensure_parent(caminho_pdf)
+    system = platform.system()
+
+    if system in ("Windows", "Darwin") and docx2pdf_convert is not None:
+        # Word instalado
+        docx2pdf_convert(str(caminho_docx), str(caminho_pdf))
+        if not caminho_pdf.exists():
+            raise RuntimeError("docx2pdf não gerou o PDF.")
+        return
+
+    # Linux (ou fallback): LibreOffice
+    try:
+        subprocess.check_call([
+            "soffice", "--headless", "--convert-to", "pdf",
+            "--outdir", str(caminho_pdf.parent), str(caminho_docx)
+        ])
+    except FileNotFoundError:
+        raise RuntimeError(
+            "LibreOffice (soffice) não encontrado. Instale-o para gerar PDF nativo."
+        )
+
+    if not caminho_pdf.exists():
+        raise RuntimeError("LibreOffice não gerou o PDF.")
+
+
+def decode_images_b64(images_b64):
+    arr = []
+    for item in images_b64 or []:
+        try:
+            # item: {name: str, data_url: 'data:image/png;base64,...'}
+            data_url = item.get('data_url')
+            if not data_url or 'base64,' not in data_url:
+                continue
+            b64 = data_url.split('base64,', 1)[1]
+            arr.append(base64.b64decode(b64))
+        except Exception:
+            pass
+    return arr
+
+
+def anexar_imagens_no_final(docx_path: Path, images_bytes: list):
+    if not images_bytes:
+        return
+    doc = Document(str(docx_path))
+    # nova página
+    doc.add_page_break()
+    for i, img in enumerate(images_bytes):
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{i}.png")
+        tmp.write(img)
+        tmp.flush()
+        tmp.close()
+        # largura ~160 mm (A4 - margens), ajuste conforme desejar
+        doc.add_picture(tmp.name, width=Mm(160))
+        os.unlink(tmp.name)
+    doc.save(str(docx_path))
+
+
+def normalize_context_keys(data: dict) -> dict:
+    """Cria aliases ASCII para chaves com acento (ex.: NÚMERO_PARCELAS -> NUMERO_PARCELAS).
+    O docxtpl/Jinja lida melhor com chaves ASCII. Mantemos ambas para cobrir templates.
+    """
+    import unicodedata
+    ctx = dict(data)
+    for k, v in list(data.items()):
+        norm = unicodedata.normalize('NFD', k)
+        norm = ''.join(ch for ch in norm if unicodedata.category(ch) != 'Mn')
+        if norm != k and norm not in ctx:
+            ctx[norm] = v
+    return ctx
+
+
+# ===== Rotas =====
+@app.route('/')
+def index():
+    return send_from_directory(app.template_folder, 'index.html')
+
+
+@app.route('/api/generate', methods=['POST'])
+def api_generate():
+    """Recebe JSON: {company, docs, data, images}
+    - company: 'InovaInox' | 'PortoStone'
+    - docs: ['Contrato', 'Ordem_de_Servico', 'Capa']
+    - data: dict de chaves -> valores
+    - images: [{name, data_url}, ...] (opcional)
+    Retorna:
+      - único PDF (se 1 doc) ou ZIP (se >1)
+    """
+    try:
+        payload = request.get_json(force=True)
+    except Exception:
+        return jsonify({"error": "JSON inválido"}), 400
+
+    company = (payload or {}).get('company')
+    docs = (payload or {}).get('docs') or []
+    data = (payload or {}).get('data') or {}
+    images_b64 = (payload or {}).get('images') or []
+
+    if not company:
+        return jsonify({"error": "company ausente"}), 400
+    if not docs:
+        return jsonify({"error": "docs vazio"}), 400
+
+    # Calculados financeiros (igual ao front, mas garantimos no backend)
+    v_prod = brl_decimal(data.get('VALOR_PRODUTOS_INSTALACAO', 0))
+    v_desc = brl_decimal(data.get('VALOR_DESCONTO', 0))
+    total = (v_prod - v_desc)
+    data['VALOR_TOTAL'] = brl_fmt(total)
+    data['VALOR_TOTAL_POR_EXTENSO'] = por_extenso_brl(total)
+
+    entrada_flag = str(data.get('VALOR_ENTRADA') or '').strip() != ''
+    v_ent = brl_decimal(data.get('VALOR_ENTRADA', 0)) if entrada_flag else Decimal('0')
+    npar = int(str(data.get('NÚMERO_PARCELAS') or '0') or 0)
+    base = (total - v_ent) if (total - v_ent) > 0 else Decimal('0')
+    parcela = (base / npar).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if npar else Decimal('0.00')
+    data['VALOR_PARCELAS'] = brl_fmt(parcela) if npar else ''
+
+    ctx = normalize_context_keys(data)
+
+    # Decodifica imagens
+    imgs = decode_images_b64(images_b64)
+
+    # Processa cada doc
+    outputs = []
+    for name in docs:
+        template_path = TEMPLATES_DIR / company / f"{name}.docx"
+        if not template_path.exists():
+            return jsonify({"error": f"Template não encontrado: {template_path}"}), 400
+
+        # Gera DOCX
+        out_docx = ensure_parent(BUILD_DIR / f"{company}_{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
+        tpl = DocxTemplate(str(template_path))
+        tpl.render(ctx)
+        tpl.save(str(out_docx))
+
+        # Anexa imagens ao final
+        if imgs:
+            anexar_imagens_no_final(out_docx, imgs)
+
+        # Converte para PDF nativo
+        out_pdf = out_docx.with_suffix('.pdf')
+        gerar_pdf(out_docx, out_pdf)
+
+        outputs.append(out_pdf)
+
+    # Resposta: PDF único ou ZIP
+    if len(outputs) == 1:
+        pdf = outputs[0]
+        return send_file(str(pdf), as_attachment=True, download_name=pdf.name, mimetype='application/pdf')
+
+    # ZIP múltiplo
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for p in outputs:
+            zf.write(p, arcname=p.name)
+    zip_buf.seek(0)
+    return send_file(zip_buf, as_attachment=True, download_name=f"{company}_documentos.zip", mimetype='application/zip')
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+---
+
+## templates/index.html (frontend — mantém Tailwind/JS, chama o backend Python)
+
+> É a **versão adaptada** do seu HTML: removi `docx-preview` + `html2pdf` e troquei a geração para `fetch('/api/generate')` enviando JSON (inclusive **imagens em base64**). O resto do visual e UX foi preservado.
+
+```html
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos — PDF (templates DOCX com {{CHAVE}})</title>
+  <title>Gerador de Contratos — PDF (backend Python)</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- PizZip para abrir/zipar DOCX -->
-  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
-
-  <!-- JSZip (OBRIGATÓRIO para docx-preview) -->
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-
-  <!-- docx-preview (renderiza DOCX -> HTML no browser) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.css">
-  <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.min.js"></script>
-
-  <!-- html2pdf (HTML -> PDF) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
@@ -40,15 +332,13 @@
     .acc-item{border-radius:1rem;border:1px solid rgb(226 232 240);overflow:hidden}
     .acc-header{width:100%;text-align:left;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between}
     .acc-body{padding:.75rem 1rem 1rem;border-top:1px dashed rgb(226 232 240)}
-    #pdf-stage{width:794px;background:#fff;padding:24px}
-    #pdf-stage.hidden{display:none}
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
   <div class="max-w-6xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
       <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (PDF)</h1>
-      <div class="text-sm text-gray-500">Templates DOCX com {{CHAVE}}</div>
+      <div class="text-sm text-gray-500">Backend Python (DOCX → PDF nativo)</div>
     </header>
 
     <!-- Seleção de empresa -->
@@ -95,7 +385,7 @@
           <div id="doc-options" class="space-y-2 text-sm"></div>
           <p class="text-xs text-gray-500 mt-3">
             Placeholders de texto: <b>{{CHAVE}}</b>.<br>
-            Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) são removidos do corpo e imagens anexadas ao final.
+            Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) são anexados ao final do PDF.
           </p>
         </div>
 
@@ -134,7 +424,7 @@
     </section>
 
     <footer class="text-center text-xs text-gray-400 mt-10">
-      Templates DOCX com {{CHAVE}} → exporta PDF no navegador.
+      Templates DOCX com {{CHAVE}} → exporta PDF no backend Python.
     </footer>
   </div>
 
@@ -168,8 +458,6 @@
     </div>
   </div>
 
-  <div id="pdf-stage" class="hidden"></div>
-
   <script>
     // ===== Helpers =====
     const el  = (s) => document.querySelector(s);
@@ -196,13 +484,7 @@
       const onzeDezenove = ['onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
       const dezenas = ['','dez','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
       const centenas = ['','cento','duzentos','trezentos','quatrocentos','quinhentos','seiscentos','setecentos','oitocentos','novecentos'];
-      const classes = [
-        {sing:'', plur:''},
-        {sing:'mil', plur:'mil'},
-        {sing:'milhão', plur:'milhões'},
-        {sing:'bilhão', plur:'bilhões'},
-        {sing:'trilhão', plur:'trilhões'},
-      ];
+      const classes = [ {sing:'', plur:''}, {sing:'mil', plur:'mil'}, {sing:'milhão', plur:'milhões'}, {sing:'bilhão', plur:'bilhões'}, {sing:'trilhão', plur:'trilhões'} ];
       const inteiro = Math.floor(Math.abs(valor));
       const cent = Math.round((Math.abs(valor) - inteiro) * 100);
       const tres = (n) => {
@@ -211,46 +493,25 @@
         let c = Math.floor(n/100), d = Math.floor((n%100)/10), u = n%10;
         let out = [];
         if (c) out.push(centenas[c]);
-        if (d === 1 && u > 0) out.push(onzeDezenove[u-1]);
-        else {
-          if (d) out.push(dezenas[d]);
-          if (u) out.push(unidades[u]);
-        }
+        if (d === 1 && u > 0) out.push(onzeDezenove[u-1]); else { if (d) out.push(dezenas[d]); if (u) out.push(unidades[u]); }
         return out.join(' e ');
       };
-      const toGroups = (n) => {
-        const s = n.toString().padStart(Math.ceil(n.toString().length/3)*3, '0');
-        const arr = [];
-        for (let i=0;i<s.length;i+=3) arr.push(Number(s.slice(i,i+3)));
-        return arr;
-      };
+      const toGroups = (n) => { const s = n.toString().padStart(Math.ceil(n.toString().length/3)*3, '0'); const arr = []; for (let i=0;i<s.length;i+=3) arr.push(Number(s.slice(i,i+3))); return arr; };
       const grupos = toGroups(inteiro);
       let partes = [];
       grupos.forEach((g, idx) => {
         const pos = grupos.length - 1 - idx;
-        const t = tres(g);
-        if (!t) return;
+        const t = tres(g); if (!t) return;
         const nome = classes[pos] || classes[classes.length-1];
-        if (pos === 0) partes.push(t);
-        else if (g === 1) partes.push(t + (nome.sing ? ' ' + nome.sing : ''));
-        else partes.push(t + ' ' + nome.plur);
+        if (pos === 0) partes.push(t); else if (g === 1) partes.push(t + (nome.sing ? ' ' + nome.sing : '')); else partes.push(t + ' ' + nome.plur);
       });
-      let reais = partes.join(', ').replace(/, ([^,]*)$/, ' e $1');
-      if (!reais) reais = 'zero';
-      reais += (inteiro === 1 ? ' real' : ' reais');
-      let centavos = '';
-      if (cent > 0) {
-        const t = tres(cent);
-        centavos = (t || 'zero') + (cent === 1 ? ' centavo' : ' centavos');
-      }
+      let reais = partes.join(', ').replace(/, ([^,]*)$/, ' e $1'); if (!reais) reais = 'zero'; reais += (inteiro === 1 ? ' real' : ' reais');
+      let centavos = ''; if (cent > 0) { const t = tres(cent); centavos = (t || 'zero') + (cent === 1 ? ' centavo' : ' centavos'); }
       return centavos ? (reais + ' e ' + centavos) : reais;
     }
 
     // ===== Dados do app =====
-    const DOCS = {
-      InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'],
-      PortoStone: ['Contrato', 'Ordem_de_Servico'],
-    };
+    const DOCS = { InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'], PortoStone: ['Contrato', 'Ordem_de_Servico'] };
     const COMMON_FIELDS = [
       { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
       { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
@@ -261,16 +522,9 @@
     ];
     const FIELDS_BY_DOC = {
       InovaInox: {
-        Contrato: [ { key: 'NÚMERO_PARCELAS', label: 'Número de parcelas' } ],
-        Ordem_de_Servico: [
-          { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
-          { key: 'CIDADE', label: 'Cidade' },
-          { key: 'VENDEDOR', label: 'Vendedor' },
-        ],
-        Capa: [
-          { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' },
-          { key: 'ENDERECO_CONTRATANTE_PROJETO', label: 'Endereço do projeto (obra)' },
-        ],
+        Contrato: [ { key: 'NUMERO_PARCELAS', label: 'Número de parcelas' } ],
+        Ordem_de_Servico: [ { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }, { key: 'CIDADE', label: 'Cidade' }, { key: 'VENDEDOR', label: 'Vendedor' } ],
+        Capa: [ { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }, { key: 'ENDERECO_CONTRATANTE_PROJETO', label: 'Endereço do projeto (obra)' } ],
       },
       PortoStone: { Contrato: [], Ordem_de_Servico: [{ key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }] },
     };
@@ -281,17 +535,13 @@
       VALOR_TOTAL_POR_EXTENSO: { label: 'Valor Total por extenso (auto)', type: 'textarea-readonly' },
       VALOR_ENTRADA: { label: 'Valor Entrada', type: 'money' },
       METODO_PAGAMENTO_ENTRADA: { label: 'Método Pagamento Entrada', type: 'select', options: ['PIX','Cartão','Dinheiro','Boleto','Transferência'] },
-      NÚMERO_PARCELAS: { label: 'Número de Parcelas', type: 'number' },
+      NUMERO_PARCELAS: { label: 'Número de Parcelas', type: 'number' },
       VALOR_PARCELAS: { label: 'Valor das parcelas (auto)', type: 'money-readonly' },
     };
-    const IMAGE_KEY_HINT = /(DESENHO|FOTO)/i;
 
     let currentCompany = null;
 
-    function selectCompanyCard(btn) {
-      els('.company-card').forEach(b => b.classList.remove('selected-card'));
-      btn.classList.add('selected-card');
-    }
+    function selectCompanyCard(btn) { els('.company-card').forEach(b => b.classList.remove('selected-card')); btn.classList.add('selected-card'); }
 
     function renderDocOptions() {
       const wrap = el('#doc-options'); wrap.innerHTML = '';
@@ -303,9 +553,7 @@
             <span>${name.replace(/_/g,' ')}</span>
           </label>`);
       });
-      els('.doc-check').forEach((c) => c.addEventListener('change', () => {
-        renderAccordion();
-      }));
+      els('.doc-check').forEach((c) => c.addEventListener('change', () => { renderAccordion(); }));
       hydrateIcons();
     }
 
@@ -340,7 +588,7 @@
           { key: 'VALOR_TOTAL_POR_EXTENSO', ...FIN_KEYS.VALOR_TOTAL_POR_EXTENSO },
           { key: 'VALOR_ENTRADA', ...FIN_KEYS.VALOR_ENTRADA },
           { key: 'METODO_PAGAMENTO_ENTRADA', ...FIN_KEYS.METODO_PAGAMENTO_ENTRADA },
-          { key: 'NÚMERO_PARCELAS', ...FIN_KEYS.NÚMERO_PARCELAS },
+          { key: 'NUMERO_PARCELAS', ...FIN_KEYS.NUMERO_PARCELAS },
           { key: 'VALOR_PARCELAS', ...FIN_KEYS.VALOR_PARCELAS },
         ];
       }
@@ -392,7 +640,7 @@
           </div>
           <div id="wrap-METODO_PAGAMENTO_ENTRADA" class="hidden">${input('METODO_PAGAMENTO_ENTRADA')}</div>
         </div>`;
-      const parcelasRow = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${input('NÚMERO_PARCELAS')}${input('VALOR_PARCELAS')}</div>`;
+      const parcelasRow = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${input('NUMERO_PARCELAS')}${input('VALOR_PARCELAS')}</div>`;
       return `<div class="space-y-3">
         ${input('VALOR_PRODUTOS_INSTALACAO')}
         ${input('VALOR_DESCONTO')}
@@ -460,7 +708,7 @@
         if (wrapMetodo) wrapMetodo.classList.toggle('hidden', !on);
         updateCalculatedFields(); refreshPreview();
       });
-      const npar = el('#f-NÚMERO_PARCELAS');
+      const npar = el('#f-NUMERO_PARCELAS');
       if (npar) {
         npar.addEventListener('input', () => { updateCalculatedFields(); refreshPreview(); });
         npar.addEventListener('blur', () => { updateCalculatedFields(); refreshPreview(); });
@@ -475,7 +723,7 @@
       const extensoEl = el('#f-VALOR_TOTAL_POR_EXTENSO'); if (extensoEl) extensoEl.value = total ? numeroPorExtensoBRL(total) : '';
       const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
       const vEntrada = entradaOn ? parseBRL(el('#f-VALOR_ENTRADA')?.value || '') : 0;
-      const nParcelas = parseInt(el('#f-NÚMERO_PARCELAS')?.value || '0', 10);
+      const nParcelas = parseInt(el('#f-NUMERO_PARCELAS')?.value || '0', 10);
       const base = Math.max(0, total - (vEntrada || 0));
       const vParcela = (nParcelas > 0) ? (base / nParcelas) : 0;
       const parcelasEl = el('#f-VALOR_PARCELAS');
@@ -483,8 +731,7 @@
     }
 
     function installFilter() {
-      const fi = el('#filter-input'); if (!fi || fi._bound) return;
-      fi._bound = true;
+      const fi = el('#filter-input'); if (!fi || fi._bound) return; fi._bound = true;
       fi.addEventListener('input', () => {
         const q = (fi.value || '').trim().toLowerCase();
         els('[data-key]').forEach(n => {
@@ -496,162 +743,15 @@
       });
     }
 
-    async function fileToArrayBuffer(file) {
-      return new Promise((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(fr.result);
-        fr.onerror = reject;
-        fr.readAsArrayBuffer(file);
-      });
-    }
-
-    async function fetchArrayBuffer(urlBase) {
-      const url = urlBase.endsWith('.docx') ? urlBase : `${urlBase}.docx`;
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error('Template não encontrado: ' + url);
-      return await resp.arrayBuffer();
-    }
-
-    // Escapa valores para XML (evita quebrar <w:t>, txbxContent, etc.)
-    function xmlEscape(s='') {
-      return String(s)
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&apos;');
-    }
-
-    function appendImagesToDocument(zip, imagesU8) {
-      if (!imagesU8.length) return zip;
-      const mediaNames = imagesU8.map((u8, i) => `word/media/compat_img_${Date.now()}_${i}.png`);
-      mediaNames.forEach((name, i) => zip.file(name, imagesU8[i]));
-      const relsPath = "word/_rels/document.xml.rels";
-      let relsXml = zip.file(relsPath).asText();
-      const relBase = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
-      const nextId = (() => {
-        const ids = [...relsXml.matchAll(/Id="rId(\d+)"/g)].map(m => +m[1]);
-        return (ids.length ? Math.max(...ids) : 100) + 1;
-      })();
-      const rIds = mediaNames.map((_, idx) => `rId${nextId + idx}`);
-      const relsToAdd = mediaNames.map((name, idx) =>
-        `<Relationship Id="${rIds[idx]}" Type="${relBase}" Target="../media/${name.split('/').pop()}" />`
-      ).join('');
-      relsXml = relsXml.replace(/<\/Relationships>\s*$/i, `${relsToAdd}</Relationships>`);
-      zip.file(relsPath, relsXml);
-      const docPath = "word/document.xml";
-      let docXml = zip.file(docPath).asText();
-      const pageBreak = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
-      const drawings = rIds.map(rid => `
-      <w:p>
-        <w:r>
-          <w:drawing>
-            <wp:inline distT="0" distB="0" distL="0" distR="0"
-                xmlns:wp="http://schemas.openxmlformats.org/wordprocessingDrawing"
-                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-                xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-              <wp:extent cx="16000000" cy="9000000"/>
-              <wp:docPr id="1" name="CompatImage"/>
-              <a:graphic>
-                <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
-                  <pic:pic>
-                    <pic:nvPicPr><pic:cNvPr id="0" name=""/><pic:cNvPicPr/></pic:nvPicPr>
-                    <pic:blipFill>
-                      <a:blip r:embed="${rid}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>
-                      <a:stretch><a:fillRect/></a:stretch>
-                    </pic:blipFill>
-                    <pic:spPr>
-                      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-                    </pic:spPr>
-                  </pic:pic>
-                </a:graphicData>
-              </a:graphic>
-            </wp:inline>
-          </w:drawing>
-        </w:r>
-      </w:p>`).join('\n');
-      docXml = docXml.replace(/<\/w:document>\s*$/i, `${pageBreak}\n${drawings}\n</w:document>`);
-      zip.file(docPath, docXml);
-      return zip;
-    }
-
-    // Não colapsa agressivamente o XML (evita mexer em txbxContent/v: shapes)
-    function normalize_xml(xml) {
-      return xml
-        .replace(/<w:t([^>]*)>\s+/g, '<w:t$1>')   // espaços à esquerda dentro de w:t
-        .replace(/\s+<\/w:t>/g, '</w:t>');        // espaços à direita dentro de w:t
-    }
-
-    function replacePlaceholdersInZip(zip, replacements, removeImageKeysRegex) {
-      const files = zip.file(/word\/.*\.xml/); // document, headers, footers, etc.
-      files.forEach(f => {
-        let xml = f.asText();
-        xml = normalize_xml(xml);
-
-        // 1) Remove chaves de imagem (em qualquer lugar) — sem quebrar XML
-        xml = xml.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (m, key) => removeImageKeysRegex.test(key) ? '' : m);
-
-        // 2) Substitui chaves de texto com ESCAPE de XML
-        for (const [rawK, rawV] of Object.entries(replacements)) {
-          const k = rawK.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-          const v = xmlEscape(rawV ?? '');
-          const pattern = new RegExp(String.raw`\{\{\s*${k}\s*\}\}`, 'g');
-          xml = xml.replace(pattern, v);
-        }
-
-        zip.file(f.name, xml);
-      });
-      return zip;
-    }
-
-    async function docxBlobToPdf(blob, filenamePdf) {
-      const stage = document.getElementById('pdf-stage');
-      if (!stage) throw new Error('#pdf-stage não encontrado');
-      if (!window.docx || typeof window.docx.renderAsync !== 'function') {
-        alert("docx-preview não carregado corretamente. PDF não pôde ser gerado.");
-        throw new Error("docx-preview não carregado");
-      }
-      if (!window.html2pdf || typeof window.html2pdf !== 'function') {
-        alert("html2pdf não carregado. PDF não pôde ser gerado.");
-        throw new Error("html2pdf não carregado");
-      }
-      stage.innerHTML = '';
-      stage.classList.remove('hidden');
-      await window.docx.renderAsync(blob, stage, null, {
-        ignoreWidth:false, ignoreHeight:false, className:'docx', inWrapper:true
-      });
-      if (!stage.innerHTML || stage.innerHTML.trim() === '') {
-        alert('Falha ao renderizar o template DOCX. PDF não será gerado!');
-        throw new Error("Falha ao renderizar DOCX em HTML");
-      }
-      const opt = {
-        margin:[10,10,10,10],
-        filename: filenamePdf,
-        image:{ type:'jpeg', quality:0.98 },
-        html2canvas:{ scale:2, useCORS:true },
-        jsPDF:{ unit:'mm', format:'a4', orientation:'portrait' }
-      };
-      await html2pdf().set(opt).from(stage).save();
-      stage.classList.add('hidden');
-    }
-
     function collectDataObject() {
       const data = {};
       els('[data-key]').forEach((inp) => {
-        const key = inp.dataset.key;
-        let val = (inp.value || '').toString();
+        const key = inp.dataset.key; let val = (inp.value || '').toString();
         if (key === 'DATA_EMISSAO_CONTRATO' && !val) val = new Date().toLocaleDateString('pt-BR');
-        if (key === 'VALOR_ENTRADA') {
-          const on = !!el('#chk-VALOR_ENTRADA')?.checked;
-          val = on ? val : '';
-        }
-        if (key === 'METODO_PAGAMENTO_ENTRADA') {
-          const on = !!el('#chk-VALOR_ENTRADA')?.checked;
-          val = on ? val : '';
-        }
+        if (key === 'VALOR_ENTRADA') { const on = !!el('#chk-VALOR_ENTRADA')?.checked; val = on ? val : ''; }
+        if (key === 'METODO_PAGAMENTO_ENTRADA') { const on = !!el('#chk-VALOR_ENTRADA')?.checked; val = on ? val : ''; }
         data[key] = val;
       });
-      // Calculados
       const vProdutos = parseBRL(data['VALOR_PRODUTOS_INSTALACAO'] || '');
       const vDesc = parseBRL(data['VALOR_DESCONTO'] || '');
       const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
@@ -659,7 +759,7 @@
       data['VALOR_TOTAL_POR_EXTENSO'] = total ? numeroPorExtensoBRL(total) : '';
       const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
       const vEntrada = entradaOn ? parseBRL(data['VALOR_ENTRADA'] || '') : 0;
-      const nParcelas = parseInt(data['NÚMERO_PARCELAS'] || '0', 10);
+      const nParcelas = parseInt(data['NUMERO_PARCELAS'] || '0', 10);
       const base = Math.max(0, total - (vEntrada || 0));
       data['VALOR_PARCELAS'] = (nParcelas > 0 && base >= 0) ? formatBRL(base / nParcelas) : '';
 
@@ -698,62 +798,45 @@
       if (num) num.textContent = p;
       if (txt && msg) txt.textContent = msg;
     }
-    function setDiag(show) {
-      const d = document.getElementById('diag'); if (!d) return;
-      d.classList.toggle('hidden', !show);
+
+    async function filesToDataURLList(fileList) {
+      const arr = [];
+      for (const f of fileList) {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.onerror = reject; fr.readAsDataURL(f);
+        });
+        arr.push({ name: f.name, data_url: dataUrl });
+      }
+      return arr;
     }
 
-    async function generateOnePdf(company, docName, data, images) {
-      setProgress(5, 'Baixando template…');
-      const url = `templates/${company}/${docName}.docx`;
-      const ab = await fetchArrayBuffer(url);
-
-      setProgress(25, 'Abrindo arquivo…');
-      if (!window.PizZip) throw new Error('PizZip não carregado');
-      let zip = new PizZip(ab);
-
-      setProgress(55, 'Substituindo placeholders…');
-      zip = replacePlaceholdersInZip(zip, data, IMAGE_KEY_HINT);
-
-      setProgress(75, 'Anexando imagens (final)…');
-      if (images && images.length) zip = appendImagesToDocument(zip, images);
-
-      setProgress(90, 'Gerando PDF…');
-      const docxBlob = zip.generate({ type: 'blob' }); // DOCX em memória
-
-      try {
-        await docxBlobToPdf(docxBlob, `${company}_${docName}.pdf`);
-      } catch (err) {
-        console.error('Falha na conversão para PDF', err);
-        alert('Falha ao gerar PDF. Verifique o template, os campos ou tente novamente.');
-        throw err;
+    async function postGenerate(company, docs, data, images) {
+      const resp = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company, docs, data, images })
+      });
+      if (!resp.ok) {
+        const txt = await resp.text().catch(()=> '');
+        throw new Error(`Falha no backend: ${resp.status} ${txt}`);
       }
-      setProgress(100, 'Concluído!');
+      return resp;
     }
 
     // ===== Inicialização =====
     document.addEventListener('DOMContentLoaded', () => {
-      // Espera Lucide e hidrata SVGs
-      (function waitLucide(){
-        if (window.lucide && window.lucide.createIcons) hydrateIcons();
-        else setTimeout(waitLucide, 50);
-      })();
+      (function waitLucide(){ if (window.lucide && window.lucide.createIcons) hydrateIcons(); else setTimeout(waitLucide, 50); })();
 
       // Seleção de empresa
       document.addEventListener('click', (ev) => {
-        const btn = ev.target.closest('.company-card');
-        if (!btn) return;
-        const company = btn.dataset.company;
-        if (!company) return;
-
-        currentCompany = company;
-        selectCompanyCard(btn);
+        const btn = ev.target.closest('.company-card'); if (!btn) return;
+        const company = btn.dataset.company; if (!company) return;
+        currentCompany = company; selectCompanyCard(btn);
         el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
         el('#step-config').classList.remove('hidden');
-
-        renderDocOptions();
-        renderAccordion();
-        hydrateIcons();
+        renderDocOptions(); renderAccordion(); hydrateIcons();
       });
 
       // Voltar
@@ -761,49 +844,40 @@
 
       // Add custom field
       el('#add-custom')?.addEventListener('click', () => {
-        const box = document.createElement('div');
-        box.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
+        const box = document.createElement('div'); box.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
         box.innerHTML = `
           <input data-type="custom-key" placeholder="CHAVE_PERSONALIZADA (sem {{ }})" class="rounded-xl border px-3 py-2 text-sm" />
-          <input data-type="custom-val" placeholder="Valor" class="rounded-xl border px-3 py-2 text-sm" />
-        `;
+          <input data-type="custom-val" placeholder="Valor" class="rounded-xl border px-3 py-2 text-sm" />`;
         el('#custom-fields').appendChild(box);
       });
 
-      // Gerar PDF
+      // Gerar PDF (chama backend Python)
       el('#btn-generate')?.addEventListener('click', async () => {
         if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
         const chosen = (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked);
         if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
 
-        showProgress(true); setDiag(true);
-
+        showProgress(true); setProgress(10, 'Preparando dados…');
         try {
           const data = collectDataObject();
-
-          // Diagnóstico
-          const list = Object.keys(data).map(k => `<li><code>{{${k}}}</code> → ${data[k] || '<i>vazio</i>'}</li>`).join('');
-          el('#diag-content').innerHTML = `
-            <div><b>Chaves (texto) → valor:</b></div>
-            <ul class="list-disc pl-5">${list}</ul>
-            <div class="mt-2 text-xs text-gray-500">Placeholders que combinem <code>/(DESENHO|FOTO)/i</code> serão removidos e as imagens anexadas ao final.</div>
-          `;
-          el('#diag').classList.remove('hidden');
-
-          // Imagens
-          const images = [];
           const files = el('#foto-input')?.files || [];
-          for (const f of files) {
-            const ab = await fileToArrayBuffer(f);
-            images.push(new Uint8Array(ab));
-          }
+          const images = await filesToDataURLList(files);
+          setProgress(30, 'Enviando ao servidor…');
 
-          // Gera cada documento
-          for (let i = 0; i < chosen.length; i++) {
-            setProgress(Math.round((i / chosen.length) * 100), `Processando ${chosen[i]}…`);
-            await generateOnePdf(currentCompany, chosen[i], data, images);
-          }
+          const resp = await postGenerate(currentCompany, chosen, data, images);
+          setProgress(80, 'Recebendo arquivo…');
 
+          const blob = await resp.blob();
+          const dl = document.createElement('a');
+          const url = URL.createObjectURL(blob);
+          dl.href = url;
+          const disp = resp.headers.get('Content-Disposition') || '';
+          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disp);
+          const fname = decodeURIComponent((match && (match[1] || match[2])) || `${currentCompany}_documento.pdf`);
+          dl.download = fname;
+          document.body.appendChild(dl); dl.click(); dl.remove(); URL.revokeObjectURL(url);
+
+          setProgress(100, 'Concluído!');
           confetti({ particleCount: 120, spread: 60, origin: { y: 0.7 }});
           const t = el('#toast'); t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'), 1800);
         } catch (e) {
@@ -817,3 +891,14 @@
   </script>
 </body>
 </html>
+```
+
+---
+
+### Observações
+
+* **Visual mantido**: Tailwind + interações em JS, ícones Lucide e confetti.
+* **Geração nativa de PDF** no **backend Python** → texto selecionável, ideal para leitura por ChatGPT/IA.
+* **Imagens** são enviadas em base64 e anexadas ao final do documento.
+* **Compatibilidade de chaves**: criei um mapeamento que adiciona chaves ASCII (ex.: `NÚMERO_PARCELAS` → `NUMERO_PARCELAS`), para facilitar templates.
+* Você pode remover/editar campos em `FIELDS_BY_DOC` e `COMMON_FIELDS` como no seu app original.
