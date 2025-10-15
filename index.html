@@ -1,904 +1,166 @@
-# Gerador de Contratos — Flask (Python)
-
-Migração do seu app web para **Python + Flask**, mantendo o **frontend Tailwind/JS** praticamente igual e movendo a geração de **DOCX → PDF nativo** para o backend em Python. A UI visual (Tailwind, ícones Lucide, toasts, modal de progresso, confetti) permanece.
-
----
-
-## Como executar
-
-1. **Salvar estrutura de pastas** (exemplo):
-
-```
-projeto/
-├─ app.py
-├─ requirements.txt
-├─ templates/
-│  └─ index.html
-└─ static/
-   └─ (vazio ou assets próprios)
-└─ templates_docs/
-   ├─ InovaInox/
-   │  ├─ Contrato.docx
-   │  ├─ Ordem_de_Servico.docx
-   │  └─ Capa.docx
-   └─ PortoStone/
-      ├─ Contrato.docx
-      └─ Ordem_de_Servico.docx
-```
-
-2. **Instalar dependências**:
-
-```
-python -m venv .venv
-source .venv/bin/activate  # (Windows: .venv\Scripts\activate)
-pip install -r requirements.txt
-```
-
-3. **Executar**:
-
-```
-python app.py
-```
-
-Acesse: [http://127.0.0.1:5000](http://127.0.0.1:5000)
-
-> Para gerar **PDF com texto selecionável**, no Windows/Mac o `docx2pdf` usa o Word instalado. No Linux, instale o LibreOffice e o app usa `soffice --headless` automaticamente.
-
----
-
-## requirements.txt
-
-```
-Flask==3.0.3
-python-docx==1.1.2
-docxtpl==0.16.7
-num2words==0.5.13
-docx2pdf==0.1.8
-```
-
-> No Linux, `docx2pdf` geralmente não funciona; usamos LibreOffice. Instale via pacote da distro (ex.: `sudo apt install libreoffice`).
-
----
-
-## app.py (Flask backend — geração DOCX e PDF nativo)
-
-```python
-import io
-import os
-import sys
-import json
-import base64
-import zipfile
-import platform
-import tempfile
-import subprocess
-from pathlib import Path
-from datetime import datetime
-
-from flask import Flask, send_from_directory, send_file, request, jsonify
-from docxtpl import DocxTemplate
-from docx import Document
-from docx.shared import Mm
-from num2words import num2words
-from decimal import Decimal, ROUND_HALF_UP
-
-try:
-    from docx2pdf import convert as docx2pdf_convert
-except Exception:
-    docx2pdf_convert = None
-
-APP_ROOT = Path(__file__).parent.resolve()
-TEMPLATES_DIR = APP_ROOT / "templates_docs"  # onde ficam os .docx originais
-BUILD_DIR = APP_ROOT / "_build"
-BUILD_DIR.mkdir(exist_ok=True)
-
-app = Flask(__name__, static_folder="static", template_folder="templates")
-
-# ===== Helpers =====
-
-def brl_decimal(n):
-    if isinstance(n, str):
-        clean = n.replace(" ", "").replace(".", "").replace(",", ".")
-        try:
-            n = Decimal(clean)
-        except Exception:
-            n = Decimal("0")
-    else:
-        n = Decimal(str(n))
-    return n.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
-def brl_fmt(n):
-    n = brl_decimal(n)
-    s = f"{n:,.2f}"  # 12,345.67
-    s = s.replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"R$ {s}"
-
-
-def por_extenso_brl(n):
-    n = brl_decimal(n)
-    inteiro = int(n)
-    cent = int((n - Decimal(inteiro)) * 100)
-    base = num2words(inteiro, lang='pt_BR')
-    if cent > 0:
-        return f"{base} reais e {num2words(cent, lang='pt_BR')} centavos"
-    return f"{base} reais"
-
-
-def ensure_parent(p: Path):
-    p.parent.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def gerar_pdf(caminho_docx: Path, caminho_pdf: Path):
-    """Gera PDF com texto selecionável.
-    - Windows/Mac: tenta usar docx2pdf (Word)
-    - Linux: LibreOffice headless
-    """
-    ensure_parent(caminho_pdf)
-    system = platform.system()
-
-    if system in ("Windows", "Darwin") and docx2pdf_convert is not None:
-        # Word instalado
-        docx2pdf_convert(str(caminho_docx), str(caminho_pdf))
-        if not caminho_pdf.exists():
-            raise RuntimeError("docx2pdf não gerou o PDF.")
-        return
-
-    # Linux (ou fallback): LibreOffice
-    try:
-        subprocess.check_call([
-            "soffice", "--headless", "--convert-to", "pdf",
-            "--outdir", str(caminho_pdf.parent), str(caminho_docx)
-        ])
-    except FileNotFoundError:
-        raise RuntimeError(
-            "LibreOffice (soffice) não encontrado. Instale-o para gerar PDF nativo."
-        )
-
-    if not caminho_pdf.exists():
-        raise RuntimeError("LibreOffice não gerou o PDF.")
-
-
-def decode_images_b64(images_b64):
-    arr = []
-    for item in images_b64 or []:
-        try:
-            # item: {name: str, data_url: 'data:image/png;base64,...'}
-            data_url = item.get('data_url')
-            if not data_url or 'base64,' not in data_url:
-                continue
-            b64 = data_url.split('base64,', 1)[1]
-            arr.append(base64.b64decode(b64))
-        except Exception:
-            pass
-    return arr
-
-
-def anexar_imagens_no_final(docx_path: Path, images_bytes: list):
-    if not images_bytes:
-        return
-    doc = Document(str(docx_path))
-    # nova página
-    doc.add_page_break()
-    for i, img in enumerate(images_bytes):
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{i}.png")
-        tmp.write(img)
-        tmp.flush()
-        tmp.close()
-        # largura ~160 mm (A4 - margens), ajuste conforme desejar
-        doc.add_picture(tmp.name, width=Mm(160))
-        os.unlink(tmp.name)
-    doc.save(str(docx_path))
-
-
-def normalize_context_keys(data: dict) -> dict:
-    """Cria aliases ASCII para chaves com acento (ex.: NÚMERO_PARCELAS -> NUMERO_PARCELAS).
-    O docxtpl/Jinja lida melhor com chaves ASCII. Mantemos ambas para cobrir templates.
-    """
-    import unicodedata
-    ctx = dict(data)
-    for k, v in list(data.items()):
-        norm = unicodedata.normalize('NFD', k)
-        norm = ''.join(ch for ch in norm if unicodedata.category(ch) != 'Mn')
-        if norm != k and norm not in ctx:
-            ctx[norm] = v
-    return ctx
-
-
-# ===== Rotas =====
-@app.route('/')
-def index():
-    return send_from_directory(app.template_folder, 'index.html')
-
-
-@app.route('/api/generate', methods=['POST'])
-def api_generate():
-    """Recebe JSON: {company, docs, data, images}
-    - company: 'InovaInox' | 'PortoStone'
-    - docs: ['Contrato', 'Ordem_de_Servico', 'Capa']
-    - data: dict de chaves -> valores
-    - images: [{name, data_url}, ...] (opcional)
-    Retorna:
-      - único PDF (se 1 doc) ou ZIP (se >1)
-    """
-    try:
-        payload = request.get_json(force=True)
-    except Exception:
-        return jsonify({"error": "JSON inválido"}), 400
-
-    company = (payload or {}).get('company')
-    docs = (payload or {}).get('docs') or []
-    data = (payload or {}).get('data') or {}
-    images_b64 = (payload or {}).get('images') or []
-
-    if not company:
-        return jsonify({"error": "company ausente"}), 400
-    if not docs:
-        return jsonify({"error": "docs vazio"}), 400
-
-    # Calculados financeiros (igual ao front, mas garantimos no backend)
-    v_prod = brl_decimal(data.get('VALOR_PRODUTOS_INSTALACAO', 0))
-    v_desc = brl_decimal(data.get('VALOR_DESCONTO', 0))
-    total = (v_prod - v_desc)
-    data['VALOR_TOTAL'] = brl_fmt(total)
-    data['VALOR_TOTAL_POR_EXTENSO'] = por_extenso_brl(total)
-
-    entrada_flag = str(data.get('VALOR_ENTRADA') or '').strip() != ''
-    v_ent = brl_decimal(data.get('VALOR_ENTRADA', 0)) if entrada_flag else Decimal('0')
-    npar = int(str(data.get('NÚMERO_PARCELAS') or '0') or 0)
-    base = (total - v_ent) if (total - v_ent) > 0 else Decimal('0')
-    parcela = (base / npar).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if npar else Decimal('0.00')
-    data['VALOR_PARCELAS'] = brl_fmt(parcela) if npar else ''
-
-    ctx = normalize_context_keys(data)
-
-    # Decodifica imagens
-    imgs = decode_images_b64(images_b64)
-
-    # Processa cada doc
-    outputs = []
-    for name in docs:
-        template_path = TEMPLATES_DIR / company / f"{name}.docx"
-        if not template_path.exists():
-            return jsonify({"error": f"Template não encontrado: {template_path}"}), 400
-
-        # Gera DOCX
-        out_docx = ensure_parent(BUILD_DIR / f"{company}_{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
-        tpl = DocxTemplate(str(template_path))
-        tpl.render(ctx)
-        tpl.save(str(out_docx))
-
-        # Anexa imagens ao final
-        if imgs:
-            anexar_imagens_no_final(out_docx, imgs)
-
-        # Converte para PDF nativo
-        out_pdf = out_docx.with_suffix('.pdf')
-        gerar_pdf(out_docx, out_pdf)
-
-        outputs.append(out_pdf)
-
-    # Resposta: PDF único ou ZIP
-    if len(outputs) == 1:
-        pdf = outputs[0]
-        return send_file(str(pdf), as_attachment=True, download_name=pdf.name, mimetype='application/pdf')
-
-    # ZIP múltiplo
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for p in outputs:
-            zf.write(p, arcname=p.name)
-    zip_buf.seek(0)
-    return send_file(zip_buf, as_attachment=True, download_name=f"{company}_documentos.zip", mimetype='application/zip')
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
-```
-
----
-
-## templates/index.html (frontend — mantém Tailwind/JS, chama o backend Python)
-
-> É a **versão adaptada** do seu HTML: removi `docx-preview` + `html2pdf` e troquei a geração para `fetch('/api/generate')` enviando JSON (inclusive **imagens em base64**). O resto do visual e UX foi preservado.
-
-```html
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gerador de Contratos — PDF (backend Python)</title>
+  <title>Gerador de Contratos — Inova Inox (Web)</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- Docx + Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.7/dist/pizzip-utils.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.42.0/build/docxtemplater.js"></script>
+
+  <!-- docx-preview (renderiza HTML) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.css">
+  <script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.1/dist/docx-preview.min.js"></script>
+
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Lucide Icons (UMD) -->
+  <!-- Ícones -->
   <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
   <style>
-    .progress-striped{
-      background-image:linear-gradient(45deg,rgba(255,255,255,.25) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.25) 50%,rgba(255,255,255,.25) 75%,transparent 75%,transparent);
-      background-size:1rem 1rem;animation:progress 1s linear infinite
-    }
+    .progress-striped{background-image:linear-gradient(45deg,rgba(255,255,255,.25)25%,transparent25%,transparent50%,rgba(255,255,255,.25)50%,rgba(255,255,255,.25)75%,transparent75%,transparent);background-size:1rem 1rem;animation:progress 1s linear infinite}
     @keyframes progress{from{background-position:1rem 0}to{background-position:0 0}}
-    .card-hover{transition:transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease}
-    .card-hover:hover{transform:translateY(-1px) scale(1.01);box-shadow:0 10px 24px rgba(0,0,0,.1);border-color:rgb(30 41 59 / .2)}
-    .selected-card{transform:translateY(-2px) scale(1.012);box-shadow:0 22px 44px -14px rgba(0,0,0,.28), 0 6px 14px rgba(0,0,0,.06);border-color:rgb(15 23 42 / .35)}
-    .acc-item{border-radius:1rem;border:1px solid rgb(226 232 240);overflow:hidden}
-    .acc-header{width:100%;text-align:left;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between}
-    .acc-body{padding:.75rem 1rem 1rem;border-top:1px dashed rgb(226 232 240)}
+    @media print {
+      @page { size: A4; margin: 20mm; }
+      body * { visibility: hidden; }
+      #print-area, #print-area * { visibility: visible; }
+      #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+    }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-900 antialiased min-h-screen">
+
+<body class="bg-gray-50 text-gray-900 min-h-screen antialiased">
   <div class="max-w-6xl mx-auto p-6">
     <header class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (PDF)</h1>
-      <div class="text-sm text-gray-500">Backend Python (DOCX → PDF nativo)</div>
+      <h1 class="text-2xl md:text-3xl font-semibold">Gerador de Contratos (Web)</h1>
+      <div class="text-sm text-gray-500">Rodando 100% no navegador</div>
     </header>
 
-    <!-- Seleção de empresa -->
+    <!-- Seleção de Empresa -->
     <section id="company-grid" class="grid md:grid-cols-2 gap-4">
-      <button type="button" data-company="InovaInox" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
+      <button data-company="InovaInox" class="company-card rounded-2xl bg-white shadow p-6 border hover:shadow-lg transition">
         <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2 text-gray-700">
-            <i data-lucide="building-2" class="w-6 h-6"></i>
-            <i data-lucide="drill" class="w-6 h-6"></i>
-          </div>
+          <i data-lucide="building-2" class="w-6 h-6"></i>
           <div>
-            <div class="font-semibold text-lg leading-tight">Inova Inox</div>
-            <div class="text-gray-500 text-sm leading-tight">Contrato, OS e Capa</div>
-          </div>
-        </div>
-      </button>
-
-      <button type="button" data-company="PortoStone" class="company-card card-hover rounded-2xl bg-white shadow border p-6 text-left w-full">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2 text-gray-700">
-            <i data-lucide="building-2" class="w-6 h-6"></i>
-            <i data-lucide="hammer" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <div class="font-semibold text-lg leading-tight">Porto Stone</div>
-            <div class="text-gray-500 text-sm leading-tight">Contrato e OS</div>
+            <div class="font-semibold text-lg">Inova Inox</div>
+            <div class="text-gray-500 text-sm">Contrato, OS e Capa</div>
           </div>
         </div>
       </button>
     </section>
 
-    <!-- Passo de configuração -->
-    <section id="step-config" class="hidden mt-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3">
-          <button id="btn-back" type="button" class="text-sm px-3 py-1.5 rounded-lg border">← Voltar</button>
-          <h2 class="text-xl font-semibold"><span id="label-company"></span></h2>
+    <!-- Área de configuração -->
+    <section id="config-step" class="hidden mt-8">
+      <div class="flex items-center justify-between mb-5">
+        <button id="btn-back" class="text-sm border rounded-lg px-3 py-1.5">← Voltar</button>
+        <h2 class="text-xl font-semibold">Inova Inox</h2>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow border p-5">
+        <div class="font-medium mb-3">Selecione o documento:</div>
+        <div id="doc-options" class="space-y-2 text-sm">
+          <label class="flex items-center gap-2"><input type="radio" name="doc" value="Contrato" checked> Contrato</label>
+          <label class="flex items-center gap-2"><input type="radio" name="doc" value="Ordem_de_Servico"> Ordem de Serviço</label>
+          <label class="flex items-center gap-2"><input type="radio" name="doc" value="Capa"> Capa</label>
+        </div>
+
+        <div class="mt-5 grid md:grid-cols-2 gap-4">
+          <div>
+            <label class="text-sm font-medium">Nome do cliente</label>
+            <input id="nome" class="w-full rounded-xl border px-3 py-2" placeholder="NOME_CONTRATANTE" />
+          </div>
+          <div>
+            <label class="text-sm font-medium">Valor total</label>
+            <input id="valor" class="w-full rounded-xl border px-3 py-2" placeholder="VALOR_TOTAL" />
+          </div>
+        </div>
+
+        <div class="flex justify-end mt-6">
+          <button id="btn-generate" class="bg-black text-white rounded-xl px-5 py-2.5">Gerar PDF</button>
         </div>
       </div>
 
-      <div class="grid lg:grid-cols-3 gap-4">
-        <div class="rounded-2xl bg-white shadow border p-5">
-          <div class="font-medium mb-3">Documentos</div>
-          <div id="doc-options" class="space-y-2 text-sm"></div>
-          <p class="text-xs text-gray-500 mt-3">
-            Placeholders de texto: <b>{{CHAVE}}</b>.<br>
-            Placeholders de imagens (ex.: <code>{{DESENHO1}}</code>, <code>{{FOTO_ORÇAMENTO}}</code>) são anexados ao final do PDF.
-          </p>
+      <div id="preview-box" class="hidden mt-8 bg-white border rounded-2xl shadow p-5">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-medium">Pré-visualização</h3>
+          <button id="btn-print" class="border rounded-lg px-3 py-1.5 text-sm">🖨️ Salvar como PDF</button>
         </div>
-
-        <div class="rounded-2xl bg-white shadow border p-5 lg:col-span-2">
-          <div class="flex items-center justify-between mb-3">
-            <div class="font-medium">Campos</div>
-            <input id="filter-input" placeholder="Filtrar campo/CHAVE..." class="rounded-xl border px-3 py-2 text-sm w-60">
-          </div>
-
-          <div id="accordion" class="space-y-3"></div>
-
-          <div class="mt-5">
-            <div class="font-medium mb-1">Imagens (opcional)</div>
-            <input id="foto-input" type="file" accept="image/*" multiple class="block w-full text-sm border rounded-xl px-3 py-2" />
-            <p class="text-xs text-gray-500 mt-1">Serão inseridas numa nova página ao final.</p>
-          </div>
-
-          <div class="mt-5">
-            <div class="flex items-center justify-between">
-              <div class="font-medium">Campos personalizados</div>
-              <button id="add-custom" type="button" class="text-sm px-3 py-1.5 rounded-lg border">+ Adicionar</button>
-            </div>
-            <div id="custom-fields" class="mt-2 space-y-2"></div>
-          </div>
-
-          <div class="flex items-center justify-end gap-3 mt-6">
-            <button id="btn-generate" type="button" class="px-5 py-2.5 rounded-xl bg-black text-white">Gerar PDF</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-6 rounded-2xl bg-white shadow border p-5">
-        <div class="font-medium">Prévia de substituições</div>
-        <div id="preview" class="mt-2 text-sm grid md:grid-cols-2 gap-x-6 gap-y-1"></div>
+        <div id="print-area" class="docx-preview"></div>
       </div>
     </section>
 
     <footer class="text-center text-xs text-gray-400 mt-10">
-      Templates DOCX com {{CHAVE}} → exporta PDF no backend Python.
+      Templates DOCX → PDF via navegador (window.print)
     </footer>
   </div>
 
-  <!-- Modal de progresso -->
-  <div id="progress-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-      <div class="flex items-center gap-3 mb-3">
-        <div class="h-10 w-10 rounded-full bg-black text-white grid place-items-center font-semibold">%</div>
-        <div>
-          <h3 class="text-lg font-semibold">Gerando documento…</h3>
-          <p id="progress-msg" class="text-xs text-gray-500">Preparando…</p>
-        </div>
-      </div>
-      <div class="w-full h-3 rounded-full bg-gray-200 overflow-hidden">
-        <div id="progress-bar" class="h-full w-0 bg-black progress-striped"></div>
-      </div>
-      <div class="text-right text-sm mt-2"><span id="progress-num">0</span>%</div>
-      <div id="diag" class="mt-4 hidden">
-        <details class="text-xs text-gray-600">
-          <summary class="cursor-pointer font-medium">Diagnóstico</summary>
-          <div class="mt-2 space-y-2" id="diag-content"></div>
-        </details>
-      </div>
-    </div>
-  </div>
-
-  <!-- Toast -->
-  <div id="toast" class="fixed left-1/2 -translate-x-1/2 top-6 hidden z-[60]">
-    <div class="px-4 py-2 bg-white shadow-lg rounded-xl border flex items-center gap-2">
-      <span>✅ PDF gerado!</span>
-    </div>
-  </div>
-
   <script>
-    // ===== Helpers =====
-    const el  = (s) => document.querySelector(s);
-    const els = (s) => Array.from(document.querySelectorAll(s));
+    const el = s => document.querySelector(s);
 
-    function hydrateIcons() {
-      if (window.lucide && typeof window.lucide.createIcons === 'function') {
-        window.lucide.createIcons();
-      }
-    }
+    // Inicialização
+    document.addEventListener("DOMContentLoaded", () => {
+      if (window.lucide) window.lucide.createIcons();
 
-    // BRL
-    const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-    const formatBRL = (n) => fmtBRL.format(isFinite(n) ? n : 0);
-    const parseBRL = (s) => {
-      if (typeof s !== 'string') return Number(s) || 0;
-      const clean = s.replace(/\s/g,'').replace(/\./g,'').replace(',', '.').replace(/[^\d.-]/g,'');
-      const n = parseFloat(clean);
-      return isNaN(n) ? 0 : n;
-    };
-
-    function numeroPorExtensoBRL(valor) {
-      const unidades = ['','um','dois','três','quatro','cinco','seis','sete','oito','nove'];
-      const onzeDezenove = ['onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
-      const dezenas = ['','dez','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
-      const centenas = ['','cento','duzentos','trezentos','quatrocentos','quinhentos','seiscentos','setecentos','oitocentos','novecentos'];
-      const classes = [ {sing:'', plur:''}, {sing:'mil', plur:'mil'}, {sing:'milhão', plur:'milhões'}, {sing:'bilhão', plur:'bilhões'}, {sing:'trilhão', plur:'trilhões'} ];
-      const inteiro = Math.floor(Math.abs(valor));
-      const cent = Math.round((Math.abs(valor) - inteiro) * 100);
-      const tres = (n) => {
-        if (n === 0) return '';
-        if (n === 100) return 'cem';
-        let c = Math.floor(n/100), d = Math.floor((n%100)/10), u = n%10;
-        let out = [];
-        if (c) out.push(centenas[c]);
-        if (d === 1 && u > 0) out.push(onzeDezenove[u-1]); else { if (d) out.push(dezenas[d]); if (u) out.push(unidades[u]); }
-        return out.join(' e ');
-      };
-      const toGroups = (n) => { const s = n.toString().padStart(Math.ceil(n.toString().length/3)*3, '0'); const arr = []; for (let i=0;i<s.length;i+=3) arr.push(Number(s.slice(i,i+3))); return arr; };
-      const grupos = toGroups(inteiro);
-      let partes = [];
-      grupos.forEach((g, idx) => {
-        const pos = grupos.length - 1 - idx;
-        const t = tres(g); if (!t) return;
-        const nome = classes[pos] || classes[classes.length-1];
-        if (pos === 0) partes.push(t); else if (g === 1) partes.push(t + (nome.sing ? ' ' + nome.sing : '')); else partes.push(t + ' ' + nome.plur);
-      });
-      let reais = partes.join(', ').replace(/, ([^,]*)$/, ' e $1'); if (!reais) reais = 'zero'; reais += (inteiro === 1 ? ' real' : ' reais');
-      let centavos = ''; if (cent > 0) { const t = tres(cent); centavos = (t || 'zero') + (cent === 1 ? ' centavo' : ' centavos'); }
-      return centavos ? (reais + ' e ' + centavos) : reais;
-    }
-
-    // ===== Dados do app =====
-    const DOCS = { InovaInox: ['Contrato', 'Ordem_de_Servico', 'Capa'], PortoStone: ['Contrato', 'Ordem_de_Servico'] };
-    const COMMON_FIELDS = [
-      { key: 'NOME_CONTRATANTE', label: 'Nome do cliente' },
-      { key: 'CPF_CONTRATANTE', label: 'CPF/CNPJ' },
-      { key: 'TELEFONE_CONTRATANTE', label: 'Telefone' },
-      { key: 'ENDERECO_CONTRATANTE', label: 'Endereço' },
-      { key: 'TIPO_DE_PROJETO', label: 'Tipo de projeto' },
-      { key: 'DATA_EMISSAO_CONTRATO', label: 'Data de emissão (auto)', placeholder: 'auto' },
-    ];
-    const FIELDS_BY_DOC = {
-      InovaInox: {
-        Contrato: [ { key: 'NUMERO_PARCELAS', label: 'Número de parcelas' } ],
-        Ordem_de_Servico: [ { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }, { key: 'CIDADE', label: 'Cidade' }, { key: 'VENDEDOR', label: 'Vendedor' } ],
-        Capa: [ { key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }, { key: 'ENDERECO_CONTRATANTE_PROJETO', label: 'Endereço do projeto (obra)' } ],
-      },
-      PortoStone: { Contrato: [], Ordem_de_Servico: [{ key: 'ORDEM_PRODUCAO', label: 'Ordem de Produção' }] },
-    };
-    const FIN_KEYS = {
-      VALOR_PRODUTOS_INSTALACAO: { label: 'Valor Instalação e Produtos', type: 'money' },
-      VALOR_DESCONTO: { label: 'Desconto', type: 'money' },
-      VALOR_TOTAL: { label: 'Valor Total (auto)', type: 'money-readonly' },
-      VALOR_TOTAL_POR_EXTENSO: { label: 'Valor Total por extenso (auto)', type: 'textarea-readonly' },
-      VALOR_ENTRADA: { label: 'Valor Entrada', type: 'money' },
-      METODO_PAGAMENTO_ENTRADA: { label: 'Método Pagamento Entrada', type: 'select', options: ['PIX','Cartão','Dinheiro','Boleto','Transferência'] },
-      NUMERO_PARCELAS: { label: 'Número de Parcelas', type: 'number' },
-      VALOR_PARCELAS: { label: 'Valor das parcelas (auto)', type: 'money-readonly' },
-    };
-
-    let currentCompany = null;
-
-    function selectCompanyCard(btn) { els('.company-card').forEach(b => b.classList.remove('selected-card')); btn.classList.add('selected-card'); }
-
-    function renderDocOptions() {
-      const wrap = el('#doc-options'); wrap.innerHTML = '';
-      (DOCS[currentCompany] || []).forEach((name) => {
-        const isChecked = name === 'Contrato' ? 'checked' : '';
-        wrap.insertAdjacentHTML('beforeend', `
-          <label class="flex items-center gap-2">
-            <input type="checkbox" class="accent-black doc-check" id="doc-${name}" ${isChecked} />
-            <span>${name.replace(/_/g,' ')}</span>
-          </label>`);
-      });
-      els('.doc-check').forEach((c) => c.addEventListener('change', () => { renderAccordion(); }));
-      hydrateIcons();
-    }
-
-    function getActiveDocs() { return (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked); }
-
-    function getAllFieldsGrouped() {
-      const active = getActiveDocs();
-      const groups = {
-        identificacao: { title: 'Identificação do cliente', fields: [] },
-        endereco: { title: 'Endereço', fields: [] },
-        projeto: { title: 'Projeto', fields: [] },
-        financeiro: { title: 'Financeiro', fields: [] },
-        comercial: { title: 'Comercial / Operacional (OS)', fields: [] },
-      };
-      COMMON_FIELDS.forEach(f => {
-        if (['NOME_CONTRATANTE','CPF_CONTRATANTE','TELEFONE_CONTRATANTE'].includes(f.key)) groups.identificacao.fields.push(f);
-        else if (['ENDERECO_CONTRATANTE'].includes(f.key)) groups.endereco.fields.push(f);
-        else if (['TIPO_DE_PROJETO','DATA_EMISSAO_CONTRATO'].includes(f.key)) groups.projeto.fields.push(f);
-      });
-      active.forEach(doc => {
-        (FIELDS_BY_DOC[currentCompany]?.[doc] || []).forEach(f => {
-          if (doc === 'Capa' && f.key === 'ENDERECO_CONTRATANTE_PROJETO') groups.endereco.fields.push(f);
-          else if (['ORDEM_PRODUCAO'].includes(f.key) || f.key === 'ENDERECO_CONTRATANTE_PROJETO') groups.projeto.fields.push(f);
-          else if (doc === 'Ordem_de_Servico') groups.comercial.fields.push(f);
+      // Selecionar empresa
+      document.querySelectorAll(".company-card").forEach(btn => {
+        btn.addEventListener("click", () => {
+          el("#company-grid").classList.add("hidden");
+          el("#config-step").classList.remove("hidden");
         });
-      });
-      if (active.includes('Contrato')) {
-        groups.financeiro.fields = [
-          { key: 'VALOR_PRODUTOS_INSTALACAO', ...FIN_KEYS.VALOR_PRODUTOS_INSTALACAO },
-          { key: 'VALOR_DESCONTO', ...FIN_KEYS.VALOR_DESCONTO },
-          { key: 'VALOR_TOTAL', ...FIN_KEYS.VALOR_TOTAL },
-          { key: 'VALOR_TOTAL_POR_EXTENSO', ...FIN_KEYS.VALOR_TOTAL_POR_EXTENSO },
-          { key: 'VALOR_ENTRADA', ...FIN_KEYS.VALOR_ENTRADA },
-          { key: 'METODO_PAGAMENTO_ENTRADA', ...FIN_KEYS.METODO_PAGAMENTO_ENTRADA },
-          { key: 'NUMERO_PARCELAS', ...FIN_KEYS.NUMERO_PARCELAS },
-          { key: 'VALOR_PARCELAS', ...FIN_KEYS.VALOR_PARCELAS },
-        ];
-      }
-      for (const g of Object.values(groups)) {
-        const seen = new Set();
-        g.fields = g.fields.filter(f => !seen.has(f.key) && seen.add(f.key));
-      }
-      return groups;
-    }
-
-    function fieldInput({ key, label, type='text', placeholder='', options=[] }) {
-      const id = 'f-' + key;
-      const baseLabel = `<label for="${id}" class="text-sm font-medium">${label} <span class="text-gray-400 text-xs">(${key})</span></label>`;
-      if (type === 'textarea' || type === 'textarea-readonly') {
-        return `<div class="flex flex-col gap-1">${baseLabel}
-          <textarea id="${id}" data-key="${key}" rows="2" class="mt-1 w-full rounded-xl border px-3 py-2 ${type==='textarea-readonly'?'bg-gray-50 text-gray-700':''}" ${type==='textarea-readonly'?'readonly':''}></textarea>
-        </div>`;
-      }
-      if (type === 'select') {
-        return `<div class="flex flex-col gap-1">${baseLabel}
-          <select id="${id}" data-key="${key}" class="mt-1 w-full rounded-xl border px-3 py-2">
-            <option value="">Selecione…</option>${options.map(o=>`<option value="${o}">${o}</option>`).join('')}
-          </select>
-        </div>`;
-      }
-      if (type === 'number') {
-        return `<div class="flex flex-col gap-1">${baseLabel}
-          <input id="${id}" data-key="${key}" type="number" min="0" step="1" class="mt-1 w-full rounded-xl border px-3 py-2" />
-        </div>`;
-      }
-      if (type === 'money' || type === 'money-readonly') {
-        return `<div class="flex flex-col gap-1">${baseLabel}
-          <input id="${id}" data-key="${key}" inputmode="decimal" class="mt-1 w-full rounded-xl border px-3 py-2 ${type==='money-readonly'?'bg-gray-50 text-gray-700':''}" ${type==='money-readonly'?'readonly':''} />
-        </div>`;
-      }
-      return `<div class="flex flex-col gap-1">${baseLabel}
-        <input id="${id}" data-key="${key}" placeholder="${placeholder}" class="mt-1 w-full rounded-xl border px-3 py-2" />
-      </div>`;
-    }
-
-    function renderFinanceCustom(fields) {
-      const input = (key) => fieldInput(fields.find(f=>f.key===key));
-      const totalRow = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${input('VALOR_TOTAL')}${input('VALOR_TOTAL_POR_EXTENSO')}</div>`;
-      const entradaRow = `
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-          <div class="flex items-center gap-3">
-            <input id="chk-VALOR_ENTRADA" type="checkbox" class="w-4 h-4 accent-black" />
-            <div class="flex-1">${input('VALOR_ENTRADA').replace('input id="f-VALOR_ENTRADA"', 'input id="f-VALOR_ENTRADA" disabled')}</div>
-          </div>
-          <div id="wrap-METODO_PAGAMENTO_ENTRADA" class="hidden">${input('METODO_PAGAMENTO_ENTRADA')}</div>
-        </div>`;
-      const parcelasRow = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${input('NUMERO_PARCELAS')}${input('VALOR_PARCELAS')}</div>`;
-      return `<div class="space-y-3">
-        ${input('VALOR_PRODUTOS_INSTALACAO')}
-        ${input('VALOR_DESCONTO')}
-        ${totalRow}
-        ${entradaRow}
-        ${parcelasRow}
-      </div>`;
-    }
-
-    function renderAccordion() {
-      const wrap = el('#accordion'); wrap.innerHTML = '';
-      const groups = getAllFieldsGrouped();
-      const order = ['identificacao','endereco','projeto','financeiro','comercial'];
-      order.forEach((gk, idx) => {
-        const g = groups[gk];
-        if (!g.fields.length) return;
-        const bodyId = `acc-body-${gk}`;
-        const count = g.fields.length;
-        wrap.insertAdjacentHTML('beforeend', `
-          <div class="acc-item">
-            <button type="button" class="acc-header" data-target="${bodyId}">
-              <span class="font-medium">${g.title} <span class="text-xs text-gray-500">(${count})</span></span>
-              <i data-lucide="chevron-down" class="w-5 h-5"></i>
-            </button>
-            <div id="${bodyId}" class="acc-body ${idx ? 'hidden' : ''}">
-              ${gk === 'financeiro'
-                ? renderFinanceCustom(g.fields)
-                : `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${g.fields.map(f => fieldInput(f)).join('')}</div>`
-              }
-            </div>
-          </div>`);
-      });
-      els('.acc-header').forEach(h => h.addEventListener('click', () => {
-        const id = h.dataset.target; el('#'+id).classList.toggle('hidden');
-      }));
-      bindFinanceHandlers();
-      bindGenericHandlers();
-      updateCalculatedFields();
-      refreshPreview();
-      hydrateIcons();
-      installFilter();
-    }
-
-    function bindGenericHandlers() {
-      const date = el('#f-DATA_EMISSAO_CONTRATO');
-      if (date && !date.value) date.value = new Date().toLocaleDateString('pt-BR');
-      els('[data-key]').forEach(inp => {
-        inp.addEventListener('input', refreshPreview);
-        inp.addEventListener('blur', refreshPreview);
-      });
-    }
-
-    function bindFinanceHandlers() {
-      ['VALOR_PRODUTOS_INSTALACAO','VALOR_DESCONTO','VALOR_ENTRADA'].forEach(k => {
-        const inp = el('#f-' + k); if (!inp) return;
-        inp.addEventListener('input', () => { updateCalculatedFields(); refreshPreview(); });
-        inp.addEventListener('blur', () => { const n = parseBRL(inp.value); inp.value = n ? formatBRL(n) : ''; updateCalculatedFields(); refreshPreview(); });
-      });
-      const chk = el('#chk-VALOR_ENTRADA');
-      const inpEnt = el('#f-VALOR_ENTRADA');
-      const wrapMetodo = el('#wrap-METODO_PAGAMENTO_ENTRADA');
-      if (chk) chk.addEventListener('change', () => {
-        const on = chk.checked;
-        if (inpEnt) { inpEnt.disabled = !on; if (!on) inpEnt.value = ''; }
-        if (wrapMetodo) wrapMetodo.classList.toggle('hidden', !on);
-        updateCalculatedFields(); refreshPreview();
-      });
-      const npar = el('#f-NUMERO_PARCELAS');
-      if (npar) {
-        npar.addEventListener('input', () => { updateCalculatedFields(); refreshPreview(); });
-        npar.addEventListener('blur', () => { updateCalculatedFields(); refreshPreview(); });
-      }
-    }
-
-    function updateCalculatedFields() {
-      const vProdutos = parseBRL(el('#f-VALOR_PRODUTOS_INSTALACAO')?.value || '');
-      const vDesc = parseBRL(el('#f-VALOR_DESCONTO')?.value || '');
-      const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
-      const totalEl = el('#f-VALOR_TOTAL'); if (totalEl) totalEl.value = total ? formatBRL(total) : '';
-      const extensoEl = el('#f-VALOR_TOTAL_POR_EXTENSO'); if (extensoEl) extensoEl.value = total ? numeroPorExtensoBRL(total) : '';
-      const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
-      const vEntrada = entradaOn ? parseBRL(el('#f-VALOR_ENTRADA')?.value || '') : 0;
-      const nParcelas = parseInt(el('#f-NUMERO_PARCELAS')?.value || '0', 10);
-      const base = Math.max(0, total - (vEntrada || 0));
-      const vParcela = (nParcelas > 0) ? (base / nParcelas) : 0;
-      const parcelasEl = el('#f-VALOR_PARCELAS');
-      if (parcelasEl) parcelasEl.value = (nParcelas > 0 && base >= 0) ? formatBRL(vParcela) : '';
-    }
-
-    function installFilter() {
-      const fi = el('#filter-input'); if (!fi || fi._bound) return; fi._bound = true;
-      fi.addEventListener('input', () => {
-        const q = (fi.value || '').trim().toLowerCase();
-        els('[data-key]').forEach(n => {
-          const key = n.dataset.key?.toLowerCase?.() || '';
-          const label = (n.closest('div')?.querySelector('label')?.textContent || '').toLowerCase();
-          const show = !q || key.includes(q) || label.includes(q);
-          n.closest('.flex.flex-col')?.classList.toggle('hidden', !show);
-        });
-      });
-    }
-
-    function collectDataObject() {
-      const data = {};
-      els('[data-key]').forEach((inp) => {
-        const key = inp.dataset.key; let val = (inp.value || '').toString();
-        if (key === 'DATA_EMISSAO_CONTRATO' && !val) val = new Date().toLocaleDateString('pt-BR');
-        if (key === 'VALOR_ENTRADA') { const on = !!el('#chk-VALOR_ENTRADA')?.checked; val = on ? val : ''; }
-        if (key === 'METODO_PAGAMENTO_ENTRADA') { const on = !!el('#chk-VALOR_ENTRADA')?.checked; val = on ? val : ''; }
-        data[key] = val;
-      });
-      const vProdutos = parseBRL(data['VALOR_PRODUTOS_INSTALACAO'] || '');
-      const vDesc = parseBRL(data['VALOR_DESCONTO'] || '');
-      const total = Math.max(0, (vProdutos || 0) - (vDesc || 0));
-      data['VALOR_TOTAL'] = total ? formatBRL(total) : '';
-      data['VALOR_TOTAL_POR_EXTENSO'] = total ? numeroPorExtensoBRL(total) : '';
-      const entradaOn = !!el('#chk-VALOR_ENTRADA')?.checked;
-      const vEntrada = entradaOn ? parseBRL(data['VALOR_ENTRADA'] || '') : 0;
-      const nParcelas = parseInt(data['NUMERO_PARCELAS'] || '0', 10);
-      const base = Math.max(0, total - (vEntrada || 0));
-      data['VALOR_PARCELAS'] = (nParcelas > 0 && base >= 0) ? formatBRL(base / nParcelas) : '';
-
-      // Personalizados
-      const ks = el('#custom-fields')?.querySelectorAll('[data-type="custom-key"]') || [];
-      const vs = el('#custom-fields')?.querySelectorAll('[data-type="custom-val"]') || [];
-      ks.forEach((kEl, i) => {
-        const rawKey = (kEl.value || '').trim().replace(/[{}]/g,'');
-        const val = vs[i]?.value || '';
-        if (rawKey) data[rawKey] = val;
-      });
-      return data;
-    }
-
-    function refreshPreview() {
-      const prev = el('#preview'); if (!prev) return;
-      prev.innerHTML = '';
-      const data = collectDataObject();
-      Object.keys(data).sort().forEach(k => {
-        const v = data[k] || '';
-        prev.insertAdjacentHTML('beforeend', `<div><code>{{${k}}}</code> → <span class="text-gray-700">${v || '<i>vazio</i>'}</span></div>`);
-      });
-    }
-
-    function showProgress(show) {
-      const m = document.getElementById('progress-modal');
-      if (show) { m.classList.remove('hidden'); m.style.display = 'flex'; setProgress(0, 'Preparando…'); }
-      else { m.classList.add('hidden'); m.style.display = 'none'; }
-    }
-    function setProgress(pct, msg) {
-      const bar = document.getElementById('progress-bar');
-      const num = document.getElementById('progress-num');
-      const txt = document.getElementById('progress-msg');
-      const p = Math.max(0, Math.min(100, pct|0));
-      if (bar) bar.style.width = p + '%';
-      if (num) num.textContent = p;
-      if (txt && msg) txt.textContent = msg;
-    }
-
-    async function filesToDataURLList(fileList) {
-      const arr = [];
-      for (const f of fileList) {
-        const dataUrl = await new Promise((resolve, reject) => {
-          const fr = new FileReader();
-          fr.onload = () => resolve(fr.result);
-          fr.onerror = reject; fr.readAsDataURL(f);
-        });
-        arr.push({ name: f.name, data_url: dataUrl });
-      }
-      return arr;
-    }
-
-    async function postGenerate(company, docs, data, images) {
-      const resp = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company, docs, data, images })
-      });
-      if (!resp.ok) {
-        const txt = await resp.text().catch(()=> '');
-        throw new Error(`Falha no backend: ${resp.status} ${txt}`);
-      }
-      return resp;
-    }
-
-    // ===== Inicialização =====
-    document.addEventListener('DOMContentLoaded', () => {
-      (function waitLucide(){ if (window.lucide && window.lucide.createIcons) hydrateIcons(); else setTimeout(waitLucide, 50); })();
-
-      // Seleção de empresa
-      document.addEventListener('click', (ev) => {
-        const btn = ev.target.closest('.company-card'); if (!btn) return;
-        const company = btn.dataset.company; if (!company) return;
-        currentCompany = company; selectCompanyCard(btn);
-        el('#label-company').textContent = currentCompany === 'InovaInox' ? 'Inova Inox' : 'Porto Stone';
-        el('#step-config').classList.remove('hidden');
-        renderDocOptions(); renderAccordion(); hydrateIcons();
       });
 
       // Voltar
-      el('#btn-back')?.addEventListener('click', () => location.reload());
-
-      // Add custom field
-      el('#add-custom')?.addEventListener('click', () => {
-        const box = document.createElement('div'); box.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
-        box.innerHTML = `
-          <input data-type="custom-key" placeholder="CHAVE_PERSONALIZADA (sem {{ }})" class="rounded-xl border px-3 py-2 text-sm" />
-          <input data-type="custom-val" placeholder="Valor" class="rounded-xl border px-3 py-2 text-sm" />`;
-        el('#custom-fields').appendChild(box);
+      el("#btn-back").addEventListener("click", () => {
+        el("#config-step").classList.add("hidden");
+        el("#company-grid").classList.remove("hidden");
       });
 
-      // Gerar PDF (chama backend Python)
-      el('#btn-generate')?.addEventListener('click', async () => {
-        if (!currentCompany) { alert('Escolha a empresa primeiro.'); return; }
-        const chosen = (DOCS[currentCompany] || []).filter((name) => el('#doc-' + name)?.checked);
-        if (!chosen.length) { alert('Selecione pelo menos um documento.'); return; }
+      // Gerar documento
+      el("#btn-generate").addEventListener("click", async () => {
+        const nome = el("#nome").value || "";
+        const valor = el("#valor").value || "";
+        const docName = document.querySelector("input[name='doc']:checked").value;
+        const url = `templates/InovaInox/${docName}.docx`;
 
-        showProgress(true); setProgress(10, 'Preparando dados…');
         try {
-          const data = collectDataObject();
-          const files = el('#foto-input')?.files || [];
-          const images = await filesToDataURLList(files);
-          setProgress(30, 'Enviando ao servidor…');
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const arrayBuffer = await blob.arrayBuffer();
+          const zip = new PizZip(arrayBuffer);
+          const doc = new window.docxtemplater().loadZip(zip);
 
-          const resp = await postGenerate(currentCompany, chosen, data, images);
-          setProgress(80, 'Recebendo arquivo…');
+          doc.setData({
+            NOME_CONTRATANTE: nome,
+            VALOR_TOTAL: valor,
+            DATA_EMISSAO_CONTRATO: new Date().toLocaleDateString("pt-BR")
+          });
 
-          const blob = await resp.blob();
-          const dl = document.createElement('a');
-          const url = URL.createObjectURL(blob);
-          dl.href = url;
-          const disp = resp.headers.get('Content-Disposition') || '';
-          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disp);
-          const fname = decodeURIComponent((match && (match[1] || match[2])) || `${currentCompany}_documento.pdf`);
-          dl.download = fname;
-          document.body.appendChild(dl); dl.click(); dl.remove(); URL.revokeObjectURL(url);
+          doc.render();
+          const out = doc.getZip().generate({ type: "blob" });
 
-          setProgress(100, 'Concluído!');
-          confetti({ particleCount: 120, spread: 60, origin: { y: 0.7 }});
-          const t = el('#toast'); t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'), 1800);
-        } catch (e) {
-          console.error(e);
-          alert('Falha na geração: ' + (e.message || e));
-        } finally {
-          setTimeout(() => { el('#progress-modal').classList.add('hidden'); el('#progress-modal').style.display='none'; }, 1200);
+          const container = el("#print-area");
+          container.innerHTML = "";
+          el("#preview-box").classList.remove("hidden");
+          window.docx.renderAsync(out, container, null, { inWrapper: false, ignoreWidth: false });
+
+          confetti({ particleCount: 100, spread: 60, origin: { y: 0.7 } });
+        } catch (err) {
+          alert("Erro ao gerar documento: " + err.message);
+          console.error(err);
         }
+      });
+
+      // Salvar como PDF (abre janela nativa)
+      el("#btn-print").addEventListener("click", () => {
+        window.print();
       });
     });
   </script>
 </body>
 </html>
-```
-
----
-
-### Observações
-
-* **Visual mantido**: Tailwind + interações em JS, ícones Lucide e confetti.
-* **Geração nativa de PDF** no **backend Python** → texto selecionável, ideal para leitura por ChatGPT/IA.
-* **Imagens** são enviadas em base64 e anexadas ao final do documento.
-* **Compatibilidade de chaves**: criei um mapeamento que adiciona chaves ASCII (ex.: `NÚMERO_PARCELAS` → `NUMERO_PARCELAS`), para facilitar templates.
-* Você pode remover/editar campos em `FIELDS_BY_DOC` e `COMMON_FIELDS` como no seu app original.
